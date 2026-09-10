@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>打字练习 · 键盘全键测试</title>
+  <link rel="stylesheet" href="assets/css/style.css">
+  <!-- 主题预置：首帧前读取 localStorage，避免亮暗闪屏（B9 / A10） -->
+  <script>
+    (function () {
+      var t = 'dark';
+      try { if (localStorage.getItem('tp_theme') === 'light') t = 'light'; } catch (e) { /* 静默降级 */ }
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
+</head>
+<body>
+  <div id="app"></div>
+
+  <!-- 加载顺序（决策锁定）：Vue CDN → data → components → app；经典脚本，禁 type="module" -->
+  <!-- 版本锁定（评审 P1-2）：双源均锁 vue@3.5.42，避免 minor 漂移/双源版本不一致；已验证两 URL 均 200 -->
+  <script src="https://unpkg.com/vue@3.5.42/dist/vue.global.prod.js"></script>
+  <script>
+    // CDN 双源兜底：unpkg 失败时同步回退 jsdelivr（同一锁定版本）
+    if (!window.Vue) {
+      document.write('<script src="https://cdn.jsdelivr.net/npm/vue@3.5.42/dist/vue.global.prod.js"><\/script>');
+    }
+  </script>
+  <script src="assets/js/data/articles.js"></script>
+  <script src="assets/js/data/keyboard.js"></script>
+  <script src="assets/js/components/TypingPractice.js"></script>
+  <script src="assets/js/components/KeyboardTest.js"></script>
+  <script src="assets/js/app.js"></script>
+</body>
+</html>
