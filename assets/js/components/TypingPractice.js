@@ -280,6 +280,7 @@
         if (pos.value >= len && len > 0) {            // 最后一行输满 → 完成
           done.value = true;
           stopTimer(true);
+          saveRecordOnce(false);                      // V2.0 F1：完成时存档（#26 改为 once 互斥）
         }
       }
       function commitString(str) {
@@ -332,6 +333,7 @@
       /* ---------- 换篇 / 重开 ---------- */
       function resetState() {
         stopTimer(false);
+        sessionSaved = false;                          // #26：新一轮练习复位存档互斥
         pos.value = 0;
         userInput.value = [];
         startTime.value = null;
@@ -346,6 +348,8 @@
       }
       function restart() { resetState(); }
       function nextArticle() {
+        /* V2.0 F1：换文时若已提交 ≥20 字且未完成且本轮未存档，保存为放弃记录（#26 once 互斥） */
+        if (pos.value >= 20 && !done.value && !sessionSaved) { stopTimer(true); saveRecordOnce(true); }
         article.value = pickArticle(article.value ? article.value.id : null);
         resetState();
         nextTick(function () {
@@ -356,6 +360,55 @@
 
       function focusInput() {
         if (inputRef.value) inputRef.value.focus({ preventScroll: true });
+      }
+
+      /* ---------- V2.0 F1：练习记录存档 ---------- */
+      /* #26 修复：每轮练习（reset→完成/放弃）仅存档一次的互斥标志。
+         完成/换文/切视图三个触发点共用，避免漏写或重复写；resetState 复位。 */
+      var sessionSaved = false;
+      function saveRecordOnce(abandoned) {
+        if (sessionSaved) return;                    // 本轮已存档，幂等跳过
+        sessionSaved = true;
+        saveRecord(abandoned);
+      }
+      /* 兼保（#26）：done 翻转即存档，即使 pushChar 同步路径被中断也必落盘 */
+      watch(done, function (v) { if (v) saveRecordOnce(false); });
+
+      /* 收集当前所有错字（用户输入 vs 原文），供 store 记录及 F2 错字本使用；
+         context = 原文中以 pos 为中心最多 7 字的上下文片段 */
+      function collectWrongChars() {
+        var chars = textChars.value;
+        var ui    = userInput.value;
+        var len   = chars.length;
+        var out   = [];
+        for (var i = 0; i < pos.value && i < len; i++) {
+          if (ui[i] !== chars[i]) {
+            var cs = Math.max(0, i - 3);
+            var ce = Math.min(len, i + 4);
+            out.push({
+              ch:      ui[i],
+              expected: chars[i],
+              pos:     i,
+              context: chars.slice(cs, ce).join('')
+            });
+          }
+        }
+        return out;
+      }
+
+      /* 保存一条记录到 TP_Store；口径完全沿用 V1 computed（speed/accuracy/elapsed） */
+      function saveRecord(abandoned) {
+        if (!window.TP_Store) return;
+        var rec = window.TP_Store.createRecord({
+          articleId:  article.value  ? article.value.id : 0,
+          chars:      pos.value,
+          durationMs: elapsed.value,
+          cpm:        speed.value,       /* = round(correctCount/(elapsed/60000)) */
+          accuracy:   accuracy.value,    /* = round(correctCount/pos*100) */
+          wrongChars: collectWrongChars(),
+          abandoned:  abandoned
+        });
+        window.TP_Store.addRecord(rec);
       }
 
       /* ---------- IME 锚点跟随 + 输入行光标同源定位（任务 #20A/B/D/E） ---------- */
@@ -509,6 +562,8 @@
         focusInput();
       });
       onUnmounted(function () {
+        /* V2.0 F1：切换视图时若已提交 ≥20 字且未完成且本轮未存档，保存为放弃记录（#26 once 互斥） */
+        if (pos.value >= 20 && !done.value && !sessionSaved) { stopTimer(true); saveRecordOnce(true); }
         stopTimer(false);                                       // 防定时器泄漏（B17）
         fontsPending = false;
         if (measureTimer !== null) { clearTimeout(measureTimer); measureTimer = null; }

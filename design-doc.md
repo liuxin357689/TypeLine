@@ -1,5 +1,7 @@
 # 打字练习 + 键盘全键测试网页 · V1 详细产品设计文档
 
+**项目英文名：TypeLine** · 品牌语：*One line of text, one line of you*
+
 > 角色：项目经理（PM） · 版本：V1（版本迭代第一版，仅核心功能）
 > 技术方向：**Vue 3（CDN 全局构建）+ 多文件 + 纯 HTML 无构建步骤**（已与用户确认）
 > 本文档定位：**decision-complete**（决策完整），前端与测试可直接依据本文档实现与验收，无需二次澄清。
@@ -722,6 +724,41 @@ font-family: "SF Mono", "Consolas", "PingFang SC", "Microsoft YaHei", monospace;
   5. 状态安全：pos/userInput/charStates 为全文全局索引；activeRowIndex 改为「包含 pos 的行」查找（不再 floor(pos/n)）；重切分不丢已输入、不重置计时。
 - **影响面**：§2.3（V2 展望）、§3.2（非目标措辞）、§4.2/§4.5/§4.6（职责与状态/数据流，新增 lineStarts）、§5.1/§5.3（结构树新增 .row-mirror/.line-text）、§6.3/§6.8（切分与交互规格重写）、§8.6/§8.7（断点职责限定、.line-text/.row-mirror 视觉规格）、§9.4（技术设计重写）、§10（B1/B5 更新，新增 B20/B21）、§11（A13/A14/A17 更新，新增 A21）。
 - **不变项（核心架构决策未动）**：Vue 3 CDN（vue@3.5.42，unpkg+jsdelivr）、多文件 window 全局共享、经典 script 无构建、逐行配对输入（`.row` = `.row-source` + `.row-input` 配对结构）、无 keep-alive、四态标色、错字分离、IME 守卫与自愈、完成弹窗、`.pos-indicator`、统计口径（全篇 pos/userInput）均保持不变。
+
+---
+
+## 14. V2 localStorage 键命名约定
+
+### 14.1 命名前缀
+
+V2 新增的所有 localStorage 键统一使用 `typeline:` 前缀，与 V1 既有键明确区分，便于调试与将来批量清理。
+
+| 键名 | 版本 | 说明 |
+| --- | --- | --- |
+| `tp_theme` | V1 | 主题偏好（`dark`/`light`）；**V2 不改名不迁移**，保持向后兼容 |
+| `typeline:records:v1` | V2 | 练习历史记录 JSON 数组（最多 500 条）；末尾 `v1` 为 schema 版本标记，将来 schema 变更时升版并写迁移逻辑 |
+
+### 14.2 降级策略
+
+`TP_Store.read()` 对以下情况静默降级为空数组 `[]`，不抛错，不阻塞渲染：
+- 键不存在（首次使用）
+- 值为非法 JSON
+- 解析结果不是数组
+- 数组内元素缺少 `id` 字段（旧结构或损坏数据）
+
+### 14.3 V2 新功能键扩展规范
+
+后续 F2/F3/F4 新增 localStorage 键时，一律沿用 `typeline:` 前缀；若 schema 有破坏性变更，改末尾版本号（如 `typeline:records:v2`）并在 `read()` 内写向前迁移逻辑，旧版本键数据保留一个过渡期后再清理。
+
+### 14.4 当前持久化实现总览（V2.0 F1 时点）
+
+持久化介质仅为浏览器 localStorage（无后端 / 无 Cookie / 无 IndexedDB），分三层：
+
+1. **偏好层**：`tp_theme`（V1 遗留键），主题切换即写、启动时读取。
+2. **数据层**：统一封装于 `window.TP_Store`（assets/js/store.js），键 `typeline:records:v1`，值为 JSON 数组；单条记录字段 `{id, ts, articleId, chars, durationMs, cpm, accuracy, wrongChars, mode, abandoned}`；写入时机 = 练习完成、换文、切视图（后两者仅当已提交 ≥20 字，记 `abandoned` 中途记录）；按裁决不做 `beforeunload` 存档；500 条环形上限、超限丢最旧；读取降级见 14.2；`aggregateWrongChars()` 于读取侧按「应打字」聚合次数 / 最近时间 / 最多 5 条去重上下文，供 F2 错字本使用；统计页签于组件挂载时全量读取渲染。
+3. **会话层（刻意不持久化）**：键盘测试已测键标记、当前练习进度、组合中拼音串等为组件内存状态，刷新即重置；V1 口径中键盘标记「持久显示」指会话内不闪烁消失，非跨会话存储。
+
+**已知边界**：清浏览器数据 / 换设备即全丢，无跨端同步（纯前端约束），V2 路线图 F9（JSON 导出/导入）预留换机迁移；500 条环形覆盖使极长期历史明细滚动丢失；直接关闭标签页的中途进度不存档（无 beforeunload）。
 
 ---
 

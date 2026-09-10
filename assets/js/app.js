@@ -16,7 +16,7 @@
   }
 
   var Vue = window.Vue;
-  var createApp = Vue.createApp, ref = Vue.ref, computed = Vue.computed, watch = Vue.watch;
+  var createApp = Vue.createApp, ref = Vue.ref, computed = Vue.computed, watch = Vue.watch, provide = Vue.provide;
 
   var THEME_KEY = "tp_theme";
 
@@ -52,7 +52,7 @@
   <header class="app-bar">
     <div class="brand">
       <span class="brand-logo" v-html="logoIcon"></span>
-      <span class="brand-name">打字练习</span>
+      <span class="brand-name">TypeLine</span>
     </div>
     <nav class="tabs" role="tablist">
       <button
@@ -71,6 +71,14 @@
         :aria-selected="currentTab === 'keyboard'"
         @click="currentTab = 'keyboard'"
       >键盘测试</button>
+      <button
+        type="button"
+        class="tab"
+        role="tab"
+        :class="{ on: currentTab === 'stats' }"
+        :aria-selected="currentTab === 'stats'"
+        @click="currentTab = 'stats'"
+      >统计</button>
     </nav>
     <button
       type="button"
@@ -90,6 +98,7 @@
     setup: function () {
       var theme = ref(readTheme());
       var currentTab = ref("typing");
+      var reviewChars = ref([]);          /* F2：错字本复练载荷（进 review 模式时注入） */
 
       /* 主题：watch → data-theme + localStorage（9.6）；
          首帧（immediate）只同步 data-theme 属性、不写 localStorage（评审 P2-7），
@@ -107,10 +116,17 @@
 
       /* 视图切换：<component :is>，切走即卸载、切回重新初始化（9.3 / 裁决 1） */
       var currentTabComp = computed(function () {
-        return currentTab.value === "keyboard"
-          ? window.TP_KeyboardTest
-          : window.TP_TypingPractice;
+        if (currentTab.value === 'keyboard') return window.TP_KeyboardTest;
+        if (currentTab.value === 'stats')    return window.TP_StatsView;
+        if (currentTab.value === 'review')   return window.TP_ReviewView;
+        return window.TP_TypingPractice;
       });
+
+      /* 向子组件提供切换页签能力（StatsView 空态「开始练习」按钮使用） */
+      provide('switchTab', function (tab) { currentTab.value = tab; });
+      /* F2：向 ReviewView 提供复练载荷；StatsView 错字本「复练这些字」调用 startReview 进入 */
+      provide('reviewChars', reviewChars);
+      provide('startReview', function (chars) { reviewChars.value = chars || []; currentTab.value = 'review'; });
 
       return {
         theme: theme,
