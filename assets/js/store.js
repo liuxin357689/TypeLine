@@ -15,6 +15,11 @@
   /* F2 错字本复练：通过计数衰减键（typeline: 前缀 + 末尾 v1，见 design-doc §14）；
      结构 { [char]: number } 表示该字已被复练通过的次数，用于抵减原始错字计数 */
   var DECAY_KEY = 'typeline:review:decay:v1';
+  /* F3 偏好键（design-doc §14：typeline: 前缀 + 末尾 v1）；值为对象、预留扩展字段。
+     结构 { mode:'full'|'timed', timedSec:30|60|120 }（标点开关已裁决取消，不含标点字段）；
+     读取侧合并默认值降级 */
+  var PREFS_KEY = 'typeline:prefs:v1';
+  var PREFS_DEFAULT = { mode: 'full', timedSec: 30 };
 
   function generateId() {
     return 'r' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
@@ -65,7 +70,7 @@
       cpm:         opts.cpm         || 0,
       accuracy:    (opts.accuracy !== undefined) ? opts.accuracy : 100,
       wrongChars:  opts.wrongChars  || [],
-      mode:        opts.mode        || 'full',   /* F2：'full' 常规 / 'review' 复练（隔离统计） */
+      mode:        opts.mode        || 'full',   /* 'full' 常规 / 'review' 复练（隔离统计） / 'timed' 限时（F3，计入统计） */
       abandoned:   !!opts.abandoned
     };
   }
@@ -156,7 +161,8 @@
     writeDecay(map);
     return map;
   }
-  /* 错字本：仅统计常规记录（mode!=='review'，前缀隔离），抵减衰减后 count>0 者，
+  /* 错字本：统计除复练外的全部记录（mode!=='review'；含 full 与 timed——裁决 F3：
+     限时模式错字语义与全文一致故计入，仅 review 隔离），抵减衰减后 count>0 者，
      按 count 降序、lastTs 降序；返回 [{ch,count,lastTs,contexts}] */
   function getWrongBook() {
     var recs = read().filter(function (r) { return r.mode !== 'review'; });
@@ -172,6 +178,41 @@
     return out;
   }
 
+  /* ------------------------------------------------------------------ */
+  /* F3 偏好读写（typeline:prefs:v1）                                      */
+  /* 读取侧对缺失/损坏/非法取值一律合并默认值降级，不抛错（向后兼容：旧记录 */
+  /* 无 timed 等值时读取侧不崩）；写入为整体合并，保留未提及的扩展字段       */
+  /* ------------------------------------------------------------------ */
+  function normPrefs(p) {
+    var out = {
+      mode:     (p && (p.mode === 'timed' || p.mode === 'full')) ? p.mode : PREFS_DEFAULT.mode,
+      timedSec: (p && (p.timedSec === 30 || p.timedSec === 60 || p.timedSec === 120)) ? p.timedSec : PREFS_DEFAULT.timedSec
+    };
+    /* 透传未知扩展字段（对象结构预留扩展） */
+    if (p && typeof p === 'object') {
+      for (var k in p) {
+        if (Object.prototype.hasOwnProperty.call(p, k) && !(k in out)) out[k] = p[k];
+      }
+    }
+    return out;
+  }
+  function getPrefs() {
+    try {
+      var raw = localStorage.getItem(PREFS_KEY);
+      if (!raw) return normPrefs(null);
+      var parsed = JSON.parse(raw);
+      return normPrefs(parsed);
+    } catch (e) {
+      return normPrefs(null);
+    }
+  }
+  function setPrefs(patch) {
+    var cur = getPrefs();
+    var merged = normPrefs(Object.assign({}, cur, patch || {}));
+    try { localStorage.setItem(PREFS_KEY, JSON.stringify(merged)); } catch (e) {}
+    return merged;
+  }
+
   window.TP_Store = {
     KEY:                 KEY,
     MAX:                 MAX,
@@ -185,6 +226,9 @@
     aggregateWrongChars: aggregateWrongChars,
     addReviewPass:       addReviewPass,
     getWrongBook:        getWrongBook,
-    DECAY_KEY:           DECAY_KEY
+    DECAY_KEY:           DECAY_KEY,
+    PREFS_KEY:           PREFS_KEY,
+    getPrefs:            getPrefs,
+    setPrefs:            setPrefs
   };
 })();

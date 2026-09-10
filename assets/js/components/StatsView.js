@@ -130,38 +130,22 @@
       <p class="chart-hint">左轴：速度（字/分）· 右轴：准确率（%）· 近 {{ trendData.length }} 次练习趋势</p>
     </div>
 
-    <!-- 错字本（F2）：仅常规记录的聚合错字，抵减复练通过后展示；一键进入复练 -->
-    <div v-if="wrongBook.length" class="stats-list wrongbook">
-      <div class="stats-list-header">
-        <h3 class="stats-section-title">错字本（{{ wrongBook.length }} 字待复练）</h3>
-        <button type="button" class="btn primary" @click="goReview">复练这些字</button>
-      </div>
-      <div class="list-wrap">
-        <div class="list-row list-head wb-head">
-          <span class="wb-ch">错字</span>
-          <span class="wb-cnt">次数</span>
-          <span class="wb-last">最近</span>
-          <span class="wb-ctx">上下文</span>
-        </div>
-        <div class="list-row wb-row" v-for="it in wrongBook" :key="it.ch">
-          <span class="wb-ch">{{ it.ch }}</span>
-          <span class="wb-cnt">{{ it.count }}</span>
-          <span class="wb-last">{{ fmtTs(it.lastTs) }}</span>
-          <span class="wb-ctx">{{ it.contexts.join(' / ') }}</span>
-        </div>
-      </div>
-    </div>
-
     <!-- 历史列表 -->
     <div class="stats-list">
       <div class="stats-list-header">
         <h3 class="stats-section-title">练习历史（共 {{ records.length }} 条）</h3>
-        <button
-          type="button"
-          class="btn ghost btn-danger"
-          :class="{ 'btn-danger-confirm': confirmClear }"
-          @click="toggleClear"
-        >{{ confirmClear ? '再次点击确认清空' : '清空全部' }}</button>
+        <div class="stats-list-actions">
+          <!-- #27 错字本简约化：平铺区块改为按钮（计数角标）+ 模态弹窗 -->
+          <button v-if="wrongBook.length" type="button" class="btn ghost wb-open" @click="openWb">
+            错字本<span class="wb-badge">{{ wrongBook.length }}</span>
+          </button>
+          <button
+            type="button"
+            class="btn ghost btn-danger"
+            :class="{ 'btn-danger-confirm': confirmClear }"
+            @click="toggleClear"
+          >{{ confirmClear ? '再次点击确认清空' : '清空全部' }}</button>
+        </div>
       </div>
       <div class="list-wrap">
         <!-- 表头 -->
@@ -183,6 +167,7 @@
           <span class="lc-num">{{ rec.accuracy }}%</span>
           <span class="lc-tag">
             <span v-if="rec.mode === 'review'" class="tag-review">复练</span>
+            <span v-else-if="rec.mode === 'timed'" class="tag-timed">限时</span>
             <span v-else :class="rec.abandoned ? 'tag-abandoned' : 'tag-complete'">{{
               rec.abandoned ? '放弃' : '完成'
             }}</span>
@@ -200,6 +185,30 @@
     </div>
 
   </template>
+
+  <!-- #27 错字本模态弹窗：仅「错字 + 错误次数」两列（次数降序）；Esc / 遮罩点击可关；
+       置于 template v-else 外部，确保删空记录后弹窗仍可渲染空态 -->
+  <div v-if="wbOpen" class="modal-mask" @click.self="closeWb">
+    <div class="modal-card wb-modal" role="dialog" aria-modal="true" aria-label="错字本">
+      <h2 class="modal-title wb-modal-title">错字本</h2>
+      <div v-if="!wrongBook.length" class="wb-empty">还没有错字，继续练习吧</div>
+      <div v-else class="wb-list">
+        <div class="wb-item wb-item-head">
+          <span class="wb-ch">错字</span>
+          <span class="wb-cnt">错误次数</span>
+        </div>
+        <div class="wb-item" v-for="it in wrongBook" :key="it.ch">
+          <span class="wb-ch">{{ it.ch }}</span>
+          <span class="wb-cnt">{{ it.count }}</span>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button v-if="wrongBook.length" class="btn primary" type="button" @click="goReview">去复练</button>
+        <button class="btn outline" type="button" @click="closeWb">关闭</button>
+      </div>
+    </div>
+  </div>
+
 </div>
 `,
     setup: function () {
@@ -216,9 +225,11 @@
         records.value = (window.TP_Store && window.TP_Store.getAll)
           ? window.TP_Store.getAll()
           : [];
+        window.addEventListener('keydown', onWbKey);          /* #27 Esc 关闭错字本弹窗 */
       });
       onUnmounted(function () {
         if (clearTimer !== null) { clearTimeout(clearTimer); clearTimer = null; }
+        window.removeEventListener('keydown', onWbKey);
       });
 
       /* ---------- 汇总卡 ---------- */
@@ -247,12 +258,17 @@
         return recs.length > 20 ? recs.slice(recs.length - 20) : recs.slice();
       });
 
-      /* ---------- 错字本（F2）：依赖 records 以便删/清后重算 ---------- */
+      /* ---------- 错字本（F2/#27）：依赖 records 以便删/清后重算 ---------- */
       var wrongBook = computed(function () {
         void records.value;
         return (window.TP_Store && window.TP_Store.getWrongBook) ? window.TP_Store.getWrongBook() : [];
       });
-      function goReview() { startReview(wrongBook.value); }
+      /* #27 错字本模态开关；展示层仅取 ch/count 两列（getWrongBook 不动） */
+      var wbOpen = ref(false);
+      function openWb()  { wbOpen.value = true; }
+      function closeWb() { wbOpen.value = false; }
+      function onWbKey(e) { if (e.key === 'Escape') wbOpen.value = false; }
+      function goReview() { closeWb(); startReview(wrongBook.value); }
 
       /* SVG 尺寸常量（直接暴露给模板） */
       var cw = CW, ch = CH, cl = CL, cr = CR;
@@ -390,6 +406,9 @@
         goTyping:     goTyping,
         wrongBook:    wrongBook,
         goReview:     goReview,
+        wbOpen:       wbOpen,
+        openWb:       openWb,
+        closeWb:      closeWb,
         fmtTs:        fmtTs
       };
     }

@@ -31,6 +31,20 @@
       :key="ci"
       class="ch-slot"
     >{{ ch }}</span></div>
+  <!-- F3 模式工具条：分段控件（模式 全文/限时 + 限时时长档），持久化 typeline:prefs:v1；
+       标点开关已裁决取消，原文标点始终原样参与比对，故此处无标点控件 -->
+  <div class="tp-toolbar">
+    <div class="seg" role="group" aria-label="练习模式">
+      <button type="button" class="seg-btn" :class="{ on: prefs.mode === 'full' }" @click="setPref({ mode: 'full' })">全文</button>
+      <button type="button" class="seg-btn" :class="{ on: prefs.mode === 'timed' }" @click="setPref({ mode: 'timed' })">限时</button>
+    </div>
+    <div v-if="prefs.mode === 'timed'" class="seg" role="group" aria-label="限时时长">
+      <button type="button" class="seg-btn" :class="{ on: prefs.timedSec === 30 }" @click="setPref({ timedSec: 30 })">30s</button>
+      <button type="button" class="seg-btn" :class="{ on: prefs.timedSec === 60 }" @click="setPref({ timedSec: 60 })">60s</button>
+      <button type="button" class="seg-btn" :class="{ on: prefs.timedSec === 120 }" @click="setPref({ timedSec: 120 })">120s</button>
+    </div>
+  </div>
+
   <div class="tp-meta">
     <span class="tp-meta-text" :title="article.title">第 {{ article.id }} 篇 · {{ totalChars }} 字</span>
     <div class="tp-meta-actions">
@@ -108,10 +122,13 @@
   </div>
 
   <div class="hud">
+    <div v-if="isTimed" class="pill" :class="{ warn: remaining <= 10000 }"><span class="pill-label">剩余</span><span class="pill-value">{{ remainingText }}</span></div>
     <div class="pill"><span class="pill-label">用时</span><span class="pill-value">{{ timeText }}</span></div>
     <div class="pill"><span class="pill-label">速度</span><span class="pill-value">{{ speed }} 字/分钟</span></div>
     <div class="pill"><span class="pill-label">准确率</span><span class="pill-value">{{ accuracy }}%</span></div>
   </div>
+
+  <div v-if="toast" class="tp-toast" role="status">{{ toast }}</div>
 
   <div v-if="done" class="modal-mask">
     <div class="modal-card">
@@ -119,6 +136,7 @@
         <svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12.5l5 5L20 6.5"/></svg>
       </div>
       <h2 class="modal-title">练习完成</h2>
+      <div v-if="isTimed" class="modal-mode-note">限时模式 · {{ prefs.timedSec }}s</div>
       <div class="modal-stats">
         <div class="m-stat">
           <span class="m-label">用时</span>
@@ -163,7 +181,14 @@
       /* 自适应换行（任务 #12）：行字符数由容器实际宽度决定（镜像测量），
          不再使用固定字数常量；lineStarts 为各行行首全文全局索引 */
 
-      /* 原文字符数组（只读，Array.from 安全处理码点） */
+      /* F3 偏好（模式/时长）：读自 TP_Store.getPrefs()，持久化 typeline:prefs:v1；
+         标点开关已裁决取消，偏好仅 { mode, timedSec } */
+      var prefs = ref((window.TP_Store && window.TP_Store.getPrefs)
+        ? window.TP_Store.getPrefs()
+        : { mode: 'full', timedSec: 30 });
+
+      /* 原文字符数组（只读，Array.from 安全处理码点）；
+         原文标点始终原样参与比对与切行（无任何过滤分支，标点开关已取消） */
       var textChars = computed(function () {
         return Array.from((article.value && article.value.text) || "");
       });
@@ -253,6 +278,19 @@
         return Math.min(100, (pos.value / len) * 100);
       });
 
+      /* ---------- F3 限时模式 ---------- */
+      var isTimed   = computed(function () { return prefs.value.mode === 'timed'; });
+      var limitMs   = computed(function () { return (prefs.value.timedSec || 30) * 1000; });
+      var remaining = computed(function () {
+        if (!isTimed.value) return 0;
+        var r = limitMs.value - elapsed.value;
+        return r < 0 ? 0 : r;
+      });
+      var remainingText = computed(function () {
+        var s = Math.ceil(remaining.value / 1000);
+        return pad2(Math.floor(s / 60)) + ":" + pad2(s % 60);
+      });
+
       /* ---------- 计时 ---------- */
       function stopTimer(finalize) {
         if (timerId !== null) { clearInterval(timerId); timerId = null; }
@@ -266,7 +304,21 @@
         elapsed.value = 0;
         timerId = setInterval(function () {
           elapsed.value = Date.now() - startTime.value;
+          /* F3 限时：倒计时归零立即结算 */
+          if (isTimed.value && !done.value && elapsed.value >= limitMs.value) finishTimed();
         }, 200);
+      }
+      /* F3 限时结算：组合中未结束的 IME 输入不提交不计字（丢弃 composing 与 input 缓冲，
+         不产生半条记录）；elapsed 置为限时长——字/分口径与全文模式一致 =
+         correctCount/(durationMs/60000)，此处 durationMs=限时长（实际用时） */
+      function finishTimed() {
+        if (done.value) return;
+        isComposing.value = false;
+        composingText.value = "";
+        if (inputRef.value) inputRef.value.value = "";
+        elapsed.value = limitMs.value;   /* 实际用时 = 限时长 */
+        stopTimer(false);                /* 停表但不再 finalize（elapsed 已定为限时长） */
+        done.value = true;               /* watch(done) → saveRecordOnce(false) → mode='timed' */
       }
 
       /* ---------- 输入核心 ---------- */
@@ -362,6 +414,28 @@
         if (inputRef.value) inputRef.value.focus({ preventScroll: true });
       }
 
+      /* ---------- F3 偏好变更 ---------- */
+      var toast = ref("");
+      var toastTimer = null;
+      function showToast(msg) {
+        toast.value = msg;
+        if (toastTimer !== null) clearTimeout(toastTimer);
+        toastTimer = setTimeout(function () { toast.value = ""; toastTimer = null; }, 2200);
+      }
+      function setPref(patch) {
+        if (!window.TP_Store || !window.TP_Store.setPrefs) return;
+        prefs.value = window.TP_Store.setPrefs(patch);
+        onPrefsChange();
+      }
+      /* 裁决（F3）：练习进行中（pos>0 且未完成）切换 模式/时长 → 重置当篇并 toast 提示；
+         pos=0（尚未输入）时无感不重置。偏好变更为用户主动行为，不记放弃记录。 */
+      function onPrefsChange() {
+        if (pos.value > 0 && !done.value) {
+          resetState();
+          showToast("模式已更改，本篇已重置");
+        }
+      }
+
       /* ---------- V2.0 F1：练习记录存档 ---------- */
       /* #26 修复：每轮练习（reset→完成/放弃）仅存档一次的互斥标志。
          完成/换文/切视图三个触发点共用，避免漏写或重复写；resetState 复位。 */
@@ -406,6 +480,7 @@
           cpm:        speed.value,       /* = round(correctCount/(elapsed/60000)) */
           accuracy:   accuracy.value,    /* = round(correctCount/pos*100) */
           wrongChars: collectWrongChars(),
+          mode:       isTimed.value ? 'timed' : 'full',   /* F3：限时记录 mode='timed'（计入统计） */
           abandoned:  abandoned
         });
         window.TP_Store.addRecord(rec);
@@ -567,6 +642,7 @@
         stopTimer(false);                                       // 防定时器泄漏（B17）
         fontsPending = false;
         if (measureTimer !== null) { clearTimeout(measureTimer); measureTimer = null; }
+        if (toastTimer !== null) { clearTimeout(toastTimer); toastTimer = null; }
         if (anchorSettleTimer !== null) { clearTimeout(anchorSettleTimer); anchorSettleTimer = null; }
         if (resizeObs) { resizeObs.disconnect(); resizeObs = null; }
         window.removeEventListener("resize", onWinResize);
@@ -604,7 +680,13 @@
         onInput: onInput,
         onKeydown: onKeydown,
         restart: restart,
-        nextArticle: nextArticle
+        nextArticle: nextArticle,
+        prefs: prefs,
+        setPref: setPref,
+        isTimed: isTimed,
+        remaining: remaining,
+        remainingText: remainingText,
+        toast: toast
       };
     }
   };

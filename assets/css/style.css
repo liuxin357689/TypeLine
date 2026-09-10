@@ -887,17 +887,66 @@ button { font-family: inherit; }
 }
 
 /* ==========================================================================
- * 错字本 + 复练模式（V2.0 F2，独立新增，不动既有规则）
+ * F3 模式工具条（分段控件）+ 限时提示 + toast（独立新增，不动既有规则）
  * ========================================================================== */
-.wrongbook .list-row {
-  grid-template-columns: 64px 64px 108px 1fr;
-  gap: 8px;
+.tp-toolbar {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 14px;
 }
+.seg {
+  display: flex; gap: 4px; padding: 4px;
+  background: var(--tab-bg); border-radius: 999px;
+}
+.seg-btn {
+  border: none; background: transparent; color: var(--text-secondary);
+  font-size: 13px; padding: 6px 16px; border-radius: 999px; cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+.seg-btn.on { background: var(--accent); color: var(--on-accent); font-weight: 600; }
+.pill.warn .pill-value { color: var(--wrong); }
+.modal-mode-note {
+  margin: 8px 0 0; color: var(--accent); font-size: 13px; font-weight: 600;
+}
+.tp-toast {
+  position: fixed; left: 50%; bottom: 32px; transform: translateX(-50%);
+  z-index: 60; padding: 10px 20px; border-radius: 999px;
+  background: var(--card-bg); color: var(--text); font-size: 13px;
+  box-shadow: var(--shadow-card); animation: tp-fade 0.2s ease both;
+}
+
+/* ==========================================================================
+ * 错字本简约化（#27：按钮 + 模态弹窗）+ 复练模式（V2.0 F2）
+ * ========================================================================== */
+.stats-list-actions { display: flex; align-items: center; gap: 10px; }
+.wb-open { position: relative; }
+.wb-badge {
+  display: inline-block; min-width: 18px; margin-left: 6px; padding: 1px 6px;
+  border-radius: 999px; background: var(--wrong); color: #fff;
+  font-size: 11px; font-weight: 700; line-height: 1.4; text-align: center;
+}
+.wb-modal { width: min(360px, calc(100vw - 48px)); }
+.wb-modal-title { margin-top: 4px; }
+.wb-empty { margin: 20px 0; color: var(--text-secondary); font-size: 14px; }
+.wb-list {
+  margin: 20px 0; max-height: 40vh; overflow-y: auto;
+  display: flex; flex-direction: column; gap: 2px;
+}
+.wb-item {
+  display: grid; grid-template-columns: 1fr 1fr; align-items: center;
+  padding: 8px 12px; border-radius: 8px;
+}
+.wb-item:nth-child(even) { background: var(--tab-bg); }
 .wb-ch  { font-size: 18px; font-weight: 700; color: var(--wrong); text-align: center; }
 .wb-cnt { color: var(--text); text-align: center; font-weight: 600; }
-.wb-last { color: var(--text-secondary); font-size: 12px; }
-.wb-ctx  { color: var(--text-secondary); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.wb-head .wb-ch, .wb-head .wb-cnt { font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+.wb-item-head .wb-ch, .wb-item-head .wb-cnt {
+  font-size: 12px; font-weight: 600; color: var(--text-secondary);
+}
+/* 限时历史标签（F3） */
+.tag-timed {
+  display: inline-block; padding: 2px 8px; border-radius: 999px;
+  font-size: 11px; font-weight: 600;
+  color: var(--correct); background: rgba(48,209,88,0.14);
+}
 
 /* 复练历史标签 */
 .tag-review {
@@ -915,6 +964,8 @@ button { font-family: inherit; }
 }
 .review-done p { margin: 0 0 12px; color: var(--text); font-size: 14px; }
 @media (max-width: 768px) {
-  .wrongbook .list-row { grid-template-columns: 44px 44px 84px 1fr; font-size: 12px; }
+  .tp-toolbar { gap: 8px; }
+  .seg-btn { padding: 6px 12px; font-size: 12px; }
   .wb-ch { font-size: 15px; }
+  .stats-list-actions { gap: 6px; }
 }
