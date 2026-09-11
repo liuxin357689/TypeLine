@@ -387,6 +387,10 @@ button { font-family: inherit; }
 .in-char { display: inline-block; color: var(--text); }
 
 /* 输入行错字 = 默认文本色、无下划线、无背景（任务 #20C4）：.in-char.bad 不再单独着色 */
+/* #38 measured 输入行原文位置锁定：正确字符绿、错字槽内红（与 single 模式 charStates 同色语义）；
+   fixed 输入行（short/long）沿用 #20C4 默认色零变化 */
+.row-input-measured .in-char.good { color: var(--correct); }
+.row-input-measured .in-char.bad  { color: var(--wrong); }
 
 /* 输入行闪烁光标（任务 #20B）：绝对定位于已提交输入末尾，
    left 由 JS updateCaretAnchor() 与 IME 锚点同源设置（同一计算，视觉重合）；
@@ -425,7 +429,8 @@ button { font-family: inherit; }
 /* ---------- #35 渲染档案（catalog profile 三旋钮：lineBreak/slot/font） ----------
    fixed   = --ch-w 定宽槽双行（short/long，零变化）
    measured= mirror 逐字测宽槽双行（code）：原文/输入两行槽同宽 inline 绑定 charWidths，
-             以空格切 word 包裹（.word inline-block + margin-right 加宽，断行仅词间）
+             以空格切 word 包裹（.word inline-block + margin-right 加宽，断行仅词间）；
+             #38 输入行原文位置锁定：错字不消耗槽红色槽内替换、正确字符绿色，光标锚视觉覆盖位
    single  = 单行覆盖式（english/poetry）：错位置替换显示用户错字符并标红、
              当前位下划线光标态；hint 行内 overlay；IME 组合预览浮层锚当前字符 */
 .prof-measured .row-source,

@@ -113,17 +113,19 @@
         <div class="row-input" :class="{ 'row-input-measured': profile.slot === 'measured' }">
           <span v-if="ri === activeRowIndex && !done" class="caret" aria-hidden="true"></span>
           <template v-if="inputSlice(row).length">
+            <!-- #38 原文位置锁定：槽 i 恒为原文槽（宽=charWidths[i] inline 绑定不变），
+                 词间 margin 仅原文词边界产生；正确字符绿色、错字红色槽内替换（不占额外宽度、不推挤后续槽） -->
             <template v-if="profile.slot === 'measured'">
               <span
                 v-for="(grp, gi) in groupRow(row)"
                 :key="'i' + gi"
                 :class="grp.word ? 'word' : 'sp-run'"
               ><span
-                  v-for="(it, ci) in inputGroup(grp)"
+                  v-for="(it, ci) in lockedGroup(grp)"
                   :key="ci"
                   class="in-char ch-m"
-                  :class="{ bad: !it.ok }"
-                  :style="slotStyle(grp.start + ci)"
+                  :class="it.ok ? 'good' : 'bad'"
+                  :style="slotStyle(it.start)"
                 >{{ it.ch }}</span></span>
             </template>
             <template v-else>
@@ -324,14 +326,33 @@
         return out;
       }
       function groupRow(row) { return wordGroups(row.start, row.end); }
-      /* 输入行词分组切片（measured）：仅取已提交部分；
-         start=全局索引（harness 逐词首字符对齐断言用） */
-      function inputGroup(grp) {
-        var ui = userInput.value;
+      /* #38 measured 输入行「原文位置锁定」模型（仅渲染层，引擎语义/错字本/统计零变化）：
+         已提交流→原文槽重建映射：流字符 === chars[target] → 覆盖该槽（显原文字符绿色）；
+         否则错字 → 不消耗槽，记在当前 target 槽红色槽内替换（同槽保留最近一次）；
+         多余错字不再把后续槽整体推挤，词间 margin 仍仅原文词边界产生 */
+      var lockedModel = computed(function () {
         var chars = textChars.value;
-        var end = Math.min(pos.value, grp.start + grp.chars.length);
+        var ui = userInput.value;
+        var red = {};
+        var t = 0;
+        for (var k = 0; k < ui.length; k++) {
+          if (t < chars.length && ui[k] === chars[t]) { t++; }
+          else { red[t] = ui[k]; }
+        }
+        return { red: red, cover: t };
+      });
+      /* 输入行词分组切片（measured，#38 锁定）：连续原文槽 [grp.start, min(grp.end, limit))；
+         start=全局索引（harness 逐词首字符对齐断言用） */
+      function lockedGroup(grp) {
+        var m = lockedModel.value;
+        var chars = textChars.value;
+        var limit = m.cover + (m.red[m.cover] !== undefined ? 1 : 0);
+        var end = Math.min(grp.start + grp.chars.length, limit);
         var out = [];
-        for (var i = grp.start; i < end; i++) out.push({ ch: ui[i], ok: ui[i] === chars[i], start: i });
+        for (var i = grp.start; i < end; i++) {
+          var r = m.red[i];
+          out.push({ ch: r !== undefined ? r : chars[i], ok: r === undefined, start: i });
+        }
         return out;
       }
 
@@ -727,9 +748,17 @@
           var k = inChars.length;
           var inLineRect = inLine.getBoundingClientRect();
           var compEl = inLine.querySelector('.composing');
-          var x = compEl
-            ? compEl.getBoundingClientRect().right                        // 组合期：拼音末端（任务 #20D）
-            : (k > 0 ? inChars[k - 1].getBoundingClientRect().right : inLineRect.left);
+          /* #38 measured：渲染槽自 row.start 连续，光标锚视觉覆盖位 cover（cover-1 槽右缘=cover 槽左缘），
+             错字槽内替换不推移光标；fixed 沿用末字符末端 */
+          var x;
+          if (compEl) {
+            x = compEl.getBoundingClientRect().right;                      // 组合期：拼音末端（任务 #20D）
+          } else if (profile.value.slot === 'measured') {
+            var cidx = lockedModel.value.cover - 1 - rows.value[activeRowIndex.value].start;
+            x = (cidx >= 0 && cidx < k) ? inChars[cidx].getBoundingClientRect().right : inLineRect.left;
+          } else {
+            x = k > 0 ? inChars[k - 1].getBoundingClientRect().right : inLineRect.left;
+          }
           inLineLeft = inLineRect.left - rowsRect.left + box.scrollLeft;  // 输入行左缘内容坐标
           left = x - rowsRect.left + box.scrollLeft;
           top = inLineRect.bottom - rowsRect.top + box.scrollTop;   // 紧贴输入行底边（任务 #20E：移除 +2）
@@ -932,7 +961,8 @@
           rows: rows.value.map(function (r) { return { start: r.start, end: r.end }; }),
           wordIds: wordIds.value,
           verses: verses.value ? verses.value.map(function (v) { return { start: v.start, len: v.chars.length }; }) : null,
-          charWidths: charWidths.value.length
+          charWidths: charWidths.value.length,
+          lockCover: lockedModel.value.cover
         };
       };
 
@@ -957,7 +987,7 @@
         mirrorRef: mirrorRef,
         inputSlice: inputSlice,
         groupRow: groupRow,
-        inputGroup: inputGroup,
+        lockedGroup: lockedGroup,
         slotStyle: slotStyle,
         overlayChar: overlayChar,
         profile: profile,
