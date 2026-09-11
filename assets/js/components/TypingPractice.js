@@ -26,7 +26,7 @@
   window.TP_TypingPractice = {
     name: "TypingPractice",
     template: `
-<div class="tp" :class="'prof-' + profile.slot">
+<div class="tp" :class="['prof-' + profile.slot, { 'prof-verse': profile.lineBreak === 'verse' }]">
   <!-- #35 渲染档案镜像：chunk = verse-block / word / flat-run；字符 span 统一 .mchar，
        槽类由 profile 决定（fixed=ch-slot 定宽 / measured|single=mw-char 自然宽） -->
   <div ref="mirrorRef" class="row-mirror line-text" aria-hidden="true"><span
@@ -73,10 +73,10 @@
       :ref="function (el) { setRowRef(ri, el); }"
       :style="{ '--i': ri }"
       class="row"
-      :class="{ active: ri === activeRowIndex, 'row-single': profile.slot === 'single' }"
+      :class="{ active: ri === activeRowIndex, 'row-single': profile.slot === 'single', 'row-dim': profile.lineBreak === 'verse' && ri !== activeRowIndex && pos <= row.start }"
     >
       <!-- #35 单行覆盖模式（english/poetry）：单行字符流三态 + 错位置替换显示用户错字符；
-           hint 改行内 overlay（该行 0 输入时显示、输入即消失）；IME 组合预览浮层锚当前字符 -->
+           IME 组合预览浮层行下方悬浮（#37：不覆盖原文）；提示文字已全删（#37） -->
       <template v-if="profile.slot === 'single'">
         <div class="row-source line-text" :class="{ 'verse-centered': profile.lineBreak === 'verse' }"><span
             v-for="(ch, ci) in row.chars"
@@ -84,10 +84,6 @@
             class="char mw-char"
             :class="charStates[row.start + ci]"
           >{{ overlayChar(row.start + ci, ch) }}</span></div>
-        <span
-          v-if="ri === activeRowIndex && pos === row.start && !done"
-          class="hint-overlay"
-        >点击此处开始输入，支持中文输入法</span>
         <span
           v-if="ri === activeRowIndex && !done && composingText"
           class="composing-float"
@@ -116,8 +112,7 @@
              词距/空格宽/折行完全同源（修复 flex 匿名项导致的两行偏移，#35 插单 B） -->
         <div class="row-input" :class="{ 'row-input-measured': profile.slot === 'measured' }">
           <span v-if="ri === activeRowIndex && !done" class="caret" aria-hidden="true"></span>
-          <span v-if="ri === activeRowIndex && pos === 0 && !done && !composingText" class="row-hint">点击此处开始输入，支持中文输入法</span>
-          <template v-else-if="inputSlice(row).length">
+          <template v-if="inputSlice(row).length">
             <template v-if="profile.slot === 'measured'">
               <span
                 v-for="(grp, gi) in groupRow(row)"
@@ -719,11 +714,11 @@
           top = cr.bottom - rowsRect.top + box.scrollTop;
           var fl = rowEl.querySelector('.composing-float');
           if (fl) {
-            /* 绝对定位包含块=padding box（.row 有 2px 边框），
-               需减去 clientLeft/clientTop（边框宽）才能锚到字符真实 rect */
+            /* #37：浮层改行下方悬浮（不覆盖原文）：left=当前字符左缘、top=活动行 rect.bottom+2；
+               绝对定位包含块=padding box（.row 有 2px 边框），需扣 clientLeft/clientTop */
             var rowRect = rowEl.getBoundingClientRect();
             fl.style.left = (cr.left - rowRect.left - rowEl.clientLeft) + 'px';
-            fl.style.top = (cr.bottom - rowRect.top - rowEl.clientTop) + 'px';
+            fl.style.top = (rowRect.bottom - rowRect.top - rowEl.clientTop + 2) + 'px';
           }
         } else {
           var inLine = rowEl.querySelector('.row-input');

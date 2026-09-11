@@ -22,6 +22,7 @@
   --border: rgba(0, 0, 0, 0.14);
   --mask: rgba(20, 20, 22, 0.45);
   --accent-glow: rgba(10, 132, 255, 0.22);
+  --verse-active-bg: rgba(10, 132, 255, 0.08);   /* #37插单A：poetry 活动行淡底色（亮主题） */
   --key-bg: #ececef;
   --key-hi: rgba(255, 255, 255, 0.95);
   --key-edge: #c9c9ce;
@@ -53,6 +54,7 @@
   --border: rgba(255, 255, 255, 0.16);
   --mask: rgba(0, 0, 0, 0.60);
   --accent-glow: rgba(10, 132, 255, 0.35);
+  --verse-active-bg: rgba(10, 132, 255, 0.16);   /* #37插单A：poetry 活动行淡底色（暗主题） */
   --key-bg: #3a3a3c;
   --key-hi: rgba(255, 255, 255, 0.14);
   --key-edge: #232325;
@@ -316,7 +318,7 @@ button { font-family: inherit; }
   margin-bottom: 6px;
   cursor: text;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.25s ease;
-  animation: tp-rise 0.4s ease both;
+  animation: tp-rise 0.4s ease backwards;   /* #37A：fill 改 backwards（原 both 结束后钉住 opacity=1 会覆盖 .row-dim 淡化） */
   animation-delay: calc(var(--i) * 40ms);
 }
 
@@ -402,12 +404,6 @@ button { font-family: inherit; }
   pointer-events: none;
 }
 
-.row-hint {
-  color: var(--text-secondary);
-  font-size: 15px;
-  margin-left: 6px;   /* 为输入行起始光标让位（任务 #20B） */
-}
-
 .row-input-empty { flex: 1; height: 0; }
 
 .row-input-empty.dashed { border-top: 1px dashed var(--border); opacity: 0.7; }
@@ -458,23 +454,24 @@ button { font-family: inherit; }
    mirror 仅测 top/width 折行点，无需居中（不影响行切分） */
 .row-source.verse-centered { text-align: center; }
 
+/* #37 插单 A：诗行节奏美化（仅 poetry，.prof-verse 门控）：
+   ① 行间隔在现行 6px 基础上 +6px（=12px）；② 未输入行 opacity 0.55，输入或成为活动行后恢复 1；
+   ③ 活动行淡底色用主题变量 --verse-active-bg（暗/亮分别定义，禁硬编码色） */
+.prof-verse .row {
+  margin-bottom: 12px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.25s ease, opacity 0.25s ease;
+}
+.prof-verse .row.row-dim { opacity: 0.55; }
+.prof-verse .row.active { background: var(--verse-active-bg); }
+
 /* #35 插单 B：measured 输入行改 block 排版，与原文行同排版上下文——
    flex 匿名项对空格/尾随空白处理与 inline 流不一致，导致两行词距偏移；
    block 化后 .word margin/空格宽/折行完全同源（.caret 绝对定位不受影响，
    .row-input-empty.dashed 在 block 下仍占满整行） */
 .row-input-measured { display: block; }
 
-/* single 覆盖行：行卡仅原文行；hint/composing 为行内绝对 overlay */
+/* single 覆盖行：行卡仅原文行；composing 浮层行内绝对定位（#37：hint 提示文字已全删） */
 .row-single { position: relative; }
-.hint-overlay {
-  position: absolute;
-  left: 16px;
-  top: 8px;
-  color: var(--text-secondary);
-  font-size: 15px;
-  line-height: 1.7;
-  pointer-events: none;
-}
 /* single 当前位 = 下划线光标态 */
 .prof-single .char.cursor {
   text-decoration-line: underline;
@@ -483,11 +480,10 @@ button { font-family: inherit; }
   text-decoration-color: var(--cursor);
   text-underline-offset: 4px;
 }
-/* IME 组合预览浮层（single）：JS 锚当前字符 rect（left=字符 left、top=字符行底），
-   translateY(-100%) 使浮层 bottom 对齐行底；橙色下划线风格沿用 .composing */
+/* IME 组合预览浮层（single，#37）：JS 锚 left=当前字符左缘、top=活动行 rect.bottom+2，
+   行下方悬浮不覆盖原文（移除 translateY）；橙色下划线风格沿用 .composing */
 .composing-float {
   position: absolute;
-  transform: translateY(-100%);
   color: var(--cursor);
   text-decoration-line: underline;
   text-decoration-style: solid;
@@ -504,7 +500,6 @@ button { font-family: inherit; }
   .prof-measured .row-input { font-size: 15px; }
   .prof-single .row-source,
   .prof-single .row-mirror { font-size: 17px; }
-  .hint-overlay { left: 12px; }
 }
 
 /* 隐藏 input：承接焦点 / 键盘 / IME（6.1）；
@@ -812,13 +807,12 @@ button { font-family: inherit; }
   :root { --ch-w: 17px; }
   .row-source, .row-mirror { font-size: 17px; }
   .row-input { font-size: 15px; }
-  /* #34 回归修复：窄屏字号阶梯 17/15 后，真机（CJK 字体度量差异）下 hint 换行两行 /
+  /* #34 回归修复（#37 收敛）：窄屏字号阶梯 17/15 后，真机（CJK 字体度量差异）下
      组合下划线贴底时行卡底部 padding 不足，输入行视觉溢出行卡背景压到下一行卡。
-     断点显式覆盖新行盒高度：行卡底 padding +2px、输入行 min-height 余量 +2px、
-     hint 同节奏 line-height 且允许任意位换行 */
+     断点显式覆盖新行盒高度：行卡底 padding +2px、输入行 min-height 余量 +2px
+     （hint 提示文字已全删，原 .row-hint 行高/换行规则一并移除） */
   .row { padding: 8px 12px 10px; margin-bottom: 6px; }
   .row-input { margin-top: 2px; min-height: calc(1.7em + 2px); }
-  .row-hint { line-height: 1.7; overflow-wrap: anywhere; }
   .rows { min-height: 240px; }
   .hud { gap: 8px; }
   .pos-indicator { gap: 8px; }
