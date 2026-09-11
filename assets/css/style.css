@@ -31,8 +31,8 @@
   --key-tested-text: #ffffff;
   --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.08);
   --shadow-pill: 0 2px 8px rgba(0, 0, 0, 0.06);
-  /* 字符槽宽（#28 字号阶梯）：与原文行字号等宽；原文/输入/镜像三处同源 */
-  --ch-w: 17px;
+  /* 字符槽宽（#32 字号阶梯上调一号）：与原文行字号等宽；原文/输入/镜像三处同源 */
+  --ch-w: 19px;
 }
 
 [data-theme="dark"] {
@@ -335,12 +335,12 @@ button { font-family: inherit; }
 /* 字号由媒体查询控制，镜像 / 真实行 / 输入行同源同步（任务 #12 条款 2 / #20C1） */
 .row-source,
 .row-mirror {
-  font-size: 17px;
-  /* 镜像与原文同源字号（#28 字号阶梯）；line-height / word-break / white-space 由 .line-text 提供 */
+  font-size: 19px;
+  /* 镜像与原文同源字号（#32 字号阶梯上调一号）；line-height / word-break / white-space 由 .line-text 提供 */
 }
 
 .row-input {
-  font-size: 15px;            /* #28：输入行较小字形，槽宽仍用 --ch-w 与原文 1:1 对齐 */
+  font-size: 17px;            /* #32：输入行较小字形（阶梯上调一号），槽宽仍用 --ch-w 与原文 1:1 对齐 */
 }
 
 /* 等宽字符槽（任务 #20C2）：原文行 / 输入行 / 镜像字符统一 1em 定宽，
@@ -728,9 +728,9 @@ button { font-family: inherit; }
   .brand-name { font-size: 16px; }
   .tab { padding: 8px 16px; font-size: 13px; }
   .app-main { padding: 16px; }
-  :root { --ch-w: 16px; }
-  .row-source, .row-mirror { font-size: 16px; }
-  .row-input { font-size: 14px; }
+  :root { --ch-w: 17px; }
+  .row-source, .row-mirror { font-size: 17px; }
+  .row-input { font-size: 15px; }
   .row { padding: 8px 12px; margin-bottom: 6px; }
   .row-input { margin-top: 2px; }
   .rows { min-height: 240px; }
