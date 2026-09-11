@@ -72,11 +72,17 @@ html, body {
   min-height: 100vh;
 }
 
+/* #30 回归修复：画布/主体背景原先依赖 body 的 background-color 过渡；主题切换帧或
+   部分引擎下该过渡未完成/停滞会让主体残留旧色（头部已切、主体仍暗）。现让 html
+   直接以变量着色（无过渡）保证画布即时一致，并移除 body 背景过渡使最大表面随
+   变量原子切换；body 仅保留文本色过渡作表面润色。 */
+html { background: var(--bg); }
+
 body {
   background: var(--bg);
   color: var(--text);
   font-family: "SF Mono", "Consolas", "PingFang SC", "Microsoft YaHei", monospace;
-  transition: background-color 0.25s ease, color 0.25s ease;
+  transition: color 0.25s ease;   /* #30：背景不走过渡，随主题原子切换 */
   -webkit-font-smoothing: antialiased;
 }
 
@@ -185,6 +191,14 @@ button { font-family: inherit; }
   display: flex;
   flex-direction: column;
 }
+
+/* #29 回归修复：.app-main 改 flex 列后，视图根（.kb / .stats-view 等无根规则者）
+   原先仅靠 align-items:stretch 取宽；当其内容含大固有 min-width（.kb-grid 860px）
+   时，部分渲染引擎会把交叉轴尺寸解为 fit-content，使键区容器坍缩、键宽退化为
+   单字符窄条。显式钉死视图根 width:100% + min-width:0（交叉轴=容器宽、可收缩），
+   并对非弹性视图根补 flex:0 0 auto（高度自然、由 .app-main 纵向滚动兜底）。 */
+.app-main > * { width: 100%; min-width: 0; }
+.kb, .stats-view { flex: 0 0 auto; }
 
 /* ---------- 按钮层级（8.7） ---------- */
 .btn {
