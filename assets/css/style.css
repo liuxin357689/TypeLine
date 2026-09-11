@@ -426,6 +426,87 @@ button { font-family: inherit; }
   white-space: pre;
 }
 
+/* ---------- #35 渲染档案（catalog profile 三旋钮：lineBreak/slot/font） ----------
+   fixed   = --ch-w 定宽槽双行（short/long，零变化）
+   measured= mirror 逐字测宽槽双行（code）：原文/输入两行槽同宽 inline 绑定 charWidths，
+             以空格切 word 包裹（.word inline-block + margin-right 加宽，断行仅词间）
+   single  = 单行覆盖式（english/poetry）：错位置替换显示用户错字符并标红、
+             当前位下划线光标态；hint 行内 overlay；IME 组合预览浮层锚当前字符 */
+.prof-measured .row-source,
+.prof-measured .row-mirror,
+.prof-measured .row-input { font-size: 17px; }   /* same17：原文/输入同源 */
+.prof-single .row-source,
+.prof-single .row-mirror { font-size: 19px; }    /* en19（窄屏 17，见下方断点） */
+
+/* measured：自然宽字符槽（宽由 JS charWidths inline 绑定，两行同源不跑位） */
+.ch-m { display: inline-block; }
+/* mirror 自然宽字符 span（measured/single 测宽源；fixed 仍用 .ch-slot 定宽） */
+.mw-char { display: inline-block; }
+.flat-run { display: inline; }
+.sp-run { display: inline; }
+/* 词包裹：词内禁折行（覆盖 .line-text 的 break-all），断行仅词间；margin-right 加宽词距 */
+.word {
+  display: inline-block;
+  word-break: normal;
+  margin-right: 8px;
+}
+/* verse 硬断行：每诗行独立成块（行内仍随宽折行，mirror 测量兼容） */
+.verse-block { display: block; }
+
+/* #35 插单 A：古诗诗行水平居中（verse 超宽折行时各行亦居中）；
+   仅作用于 poetry 单行覆盖行，english/code/short/long 左对齐不变；
+   mirror 仅测 top/width 折行点，无需居中（不影响行切分） */
+.row-source.verse-centered { text-align: center; }
+
+/* #35 插单 B：measured 输入行改 block 排版，与原文行同排版上下文——
+   flex 匿名项对空格/尾随空白处理与 inline 流不一致，导致两行词距偏移；
+   block 化后 .word margin/空格宽/折行完全同源（.caret 绝对定位不受影响，
+   .row-input-empty.dashed 在 block 下仍占满整行） */
+.row-input-measured { display: block; }
+
+/* single 覆盖行：行卡仅原文行；hint/composing 为行内绝对 overlay */
+.row-single { position: relative; }
+.hint-overlay {
+  position: absolute;
+  left: 16px;
+  top: 8px;
+  color: var(--text-secondary);
+  font-size: 15px;
+  line-height: 1.7;
+  pointer-events: none;
+}
+/* single 当前位 = 下划线光标态 */
+.prof-single .char.cursor {
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--cursor);
+  text-underline-offset: 4px;
+}
+/* IME 组合预览浮层（single）：JS 锚当前字符 rect（left=字符 left、top=字符行底），
+   translateY(-100%) 使浮层 bottom 对齐行底；橙色下划线风格沿用 .composing */
+.composing-float {
+  position: absolute;
+  transform: translateY(-100%);
+  color: var(--cursor);
+  text-decoration-line: underline;
+  text-decoration-style: solid;
+  text-decoration-thickness: 1px;
+  text-decoration-color: var(--cursor);
+  text-underline-offset: 3px;
+  white-space: pre;
+  pointer-events: none;
+  z-index: 6;
+}
+@media (max-width: 768px) {
+  .prof-measured .row-source,
+  .prof-measured .row-mirror,
+  .prof-measured .row-input { font-size: 15px; }
+  .prof-single .row-source,
+  .prof-single .row-mirror { font-size: 17px; }
+  .hint-overlay { left: 12px; }
+}
+
 /* 隐藏 input：承接焦点 / 键盘 / IME（6.1）；
    position:absolute 置于 .rows 内，由 JS updateCaretAnchor() 锚到「用户输入行下方」
    （top=输入行底边紧贴无额外下移，left=已提交输入光标 x，组合期取拼音末端，

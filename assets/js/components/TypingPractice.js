@@ -26,12 +26,19 @@
   window.TP_TypingPractice = {
     name: "TypingPractice",
     template: `
-<div class="tp">
+<div class="tp" :class="'prof-' + profile.slot">
+  <!-- #35 渲染档案镜像：chunk = verse-block / word / flat-run；字符 span 统一 .mchar，
+       槽类由 profile 决定（fixed=ch-slot 定宽 / measured|single=mw-char 自然宽） -->
   <div ref="mirrorRef" class="row-mirror line-text" aria-hidden="true"><span
-      v-for="(ch, ci) in textChars"
-      :key="ci"
-      class="ch-slot"
-    >{{ ch }}</span></div>
+      v-for="(ck, ki) in mirrorChunks"
+      :key="ki"
+      :class="ck.block ? 'verse-block' : (ck.word ? 'word' : 'flat-run')"
+    ><span
+        v-for="(ch, ci) in ck.chars"
+        :key="ci"
+        class="mchar"
+        :class="mirrorCharClass"
+      >{{ ch }}</span></span></div>
   <!-- F3 模式工具条 + 元信息合并单行（#28）：左=分类 chip+换分类+模式分段（全文/限时+时长档），
        中=篇/字数，右=换一篇/重新开始；窄屏 flex-wrap 换行。持久化 typeline:prefs:v1 -->
   <div class="tp-toolbar">
@@ -66,37 +73,86 @@
       :ref="function (el) { setRowRef(ri, el); }"
       :style="{ '--i': ri }"
       class="row"
-      :class="{ active: ri === activeRowIndex }"
+      :class="{ active: ri === activeRowIndex, 'row-single': profile.slot === 'single' }"
     >
-      <div class="row-source line-text"><span
-          v-for="(ch, ci) in row.chars"
-          :key="ci"
-          class="char ch-slot"
-          :class="charStates[row.start + ci]"
-        >{{ ch }}</span></div>
-      <div class="row-input">
-        <span v-if="ri === activeRowIndex && !done" class="caret" aria-hidden="true"></span>
-        <span v-if="ri === activeRowIndex && pos === 0 && !done && !composingText" class="row-hint">点击此处开始输入，支持中文输入法</span>
-        <template v-else-if="inputSlice(row).length">
-          <span
-            v-for="(item, ci) in inputSlice(row)"
+      <!-- #35 单行覆盖模式（english/poetry）：单行字符流三态 + 错位置替换显示用户错字符；
+           hint 改行内 overlay（该行 0 输入时显示、输入即消失）；IME 组合预览浮层锚当前字符 -->
+      <template v-if="profile.slot === 'single'">
+        <div class="row-source line-text" :class="{ 'verse-centered': profile.lineBreak === 'verse' }"><span
+            v-for="(ch, ci) in row.chars"
             :key="ci"
-            class="in-char ch-slot"
-            :class="{ bad: !item.ok }"
-          >{{ item.ch }}</span>
-        </template>
-        <div
-          v-else-if="!(ri === activeRowIndex && !done && composingText)"
-          class="row-input-empty"
-          :class="{ dashed: ri === activeRowIndex && !done }"
-        ></div>
-        <!-- IME 组合预览（任务 #20D）：隐藏 input 中的拼音串临时渲染到已提交字符之后，
-             textContent 插值渲染（禁 v-html），compositionend 即清空 -->
+            class="char mw-char"
+            :class="charStates[row.start + ci]"
+          >{{ overlayChar(row.start + ci, ch) }}</span></div>
+        <span
+          v-if="ri === activeRowIndex && pos === row.start && !done"
+          class="hint-overlay"
+        >点击此处开始输入，支持中文输入法</span>
         <span
           v-if="ri === activeRowIndex && !done && composingText"
-          class="composing"
+          class="composing-float"
         >{{ composingText }}</span>
-      </div>
+      </template>
+      <!-- 双行配对模式（fixed/measured，6.8） -->
+      <template v-else>
+        <div v-if="profile.slot === 'measured'" class="row-source line-text"><span
+            v-for="(grp, gi) in groupRow(row)"
+            :key="gi"
+            :class="grp.word ? 'word' : 'sp-run'"
+          ><span
+              v-for="(ch, ci) in grp.chars"
+              :key="ci"
+              class="char ch-m"
+              :class="charStates[grp.start + ci]"
+              :style="slotStyle(grp.start + ci)"
+            >{{ ch }}</span></span></div>
+        <div v-else class="row-source line-text"><span
+            v-for="(ch, ci) in row.chars"
+            :key="ci"
+            class="char ch-slot"
+            :class="charStates[row.start + ci]"
+          >{{ ch }}</span></div>
+        <!-- measured 输入行改 block 排版（.row-input-measured）：与原文行同排版上下文，
+             词距/空格宽/折行完全同源（修复 flex 匿名项导致的两行偏移，#35 插单 B） -->
+        <div class="row-input" :class="{ 'row-input-measured': profile.slot === 'measured' }">
+          <span v-if="ri === activeRowIndex && !done" class="caret" aria-hidden="true"></span>
+          <span v-if="ri === activeRowIndex && pos === 0 && !done && !composingText" class="row-hint">点击此处开始输入，支持中文输入法</span>
+          <template v-else-if="inputSlice(row).length">
+            <template v-if="profile.slot === 'measured'">
+              <span
+                v-for="(grp, gi) in groupRow(row)"
+                :key="'i' + gi"
+                :class="grp.word ? 'word' : 'sp-run'"
+              ><span
+                  v-for="(it, ci) in inputGroup(grp)"
+                  :key="ci"
+                  class="in-char ch-m"
+                  :class="{ bad: !it.ok }"
+                  :style="slotStyle(grp.start + ci)"
+                >{{ it.ch }}</span></span>
+            </template>
+            <template v-else>
+              <span
+                v-for="(item, ci) in inputSlice(row)"
+                :key="ci"
+                class="in-char ch-slot"
+                :class="{ bad: !item.ok }"
+              >{{ item.ch }}</span>
+            </template>
+          </template>
+          <div
+            v-else-if="!(ri === activeRowIndex && !done && composingText)"
+            class="row-input-empty"
+            :class="{ dashed: ri === activeRowIndex && !done }"
+          ></div>
+          <!-- IME 组合预览（任务 #20D）：隐藏 input 中的拼音串临时渲染到已提交字符之后，
+               textContent 插值渲染（禁 v-html），compositionend 即清空 -->
+          <span
+            v-if="ri === activeRowIndex && !done && composingText"
+            class="composing"
+          >{{ composingText }}</span>
+        </div>
+      </template>
     </div>
     <input
       ref="inputRef"
@@ -174,6 +230,14 @@
         var e = window.TP_DataLoader && window.TP_DataLoader.getEntry(catId.value);
         return e ? e.name : '未选分类';
       });
+      /* ---------- #35 渲染档案：注册表 profile 三旋钮（lineBreak/slot/font） ----------
+         fixed   = --ch-w 定宽槽双行（short/long，零变化）
+         measured= mirror 逐字测宽槽双行（code，词间断行）
+         single  = 单行覆盖式（english/poetry，错字替换显示） */
+      var profile = computed(function () {
+        var e = window.TP_DataLoader && window.TP_DataLoader.getEntry(catId.value);
+        return (e && e.profile) || { lineBreak: 'width', slot: 'fixed', font: 'step' };
+      });
       /* 换分类：回首页并清当前分类；组件随卸载触发 onUnmounted 既有
          ≥20 字放弃存档语义（与切视图一致，裁决要求）；prefs.cat 保留供「继续上次」 */
       function changeCategory() {
@@ -214,6 +278,98 @@
         return Array.from((article.value && article.value.text) || "");
       });
       var totalChars = computed(function () { return textChars.value.length; });
+
+      /* #35 verse 断行（poetry）：article.verses → [{chars, start}]；
+         join 长度与全文不等时回落 width 折行（守卫） */
+      var verses = computed(function () {
+        var a = article.value;
+        var vs = (a && a.verses) || null;
+        if (!vs || !vs.length) return null;
+        var out = [];
+        var s = 0;
+        for (var i = 0; i < vs.length; i++) {
+          var vc = Array.from(vs[i]);
+          out.push({ chars: vc, start: s });
+          s += vc.length;
+        }
+        return s === textChars.value.length ? out : null;
+      });
+
+      /* #35 词边界（measured）：空格分词编号，空格字符为 -1 */
+      var wordIds = computed(function () {
+        var chars = textChars.value;
+        var out = new Array(chars.length);
+        var wid = 0;
+        var inWord = false;
+        for (var i = 0; i < chars.length; i++) {
+          if (chars[i] === ' ') { out[i] = -1; inWord = false; }
+          else { if (!inWord) { wid++; inWord = true; } out[i] = wid; }
+        }
+        return out;
+      });
+
+      /* #35 词分组：[from,to) 全局索引切为 {word, chars, start} 序列（空格独立成组） */
+      function wordGroups(from, to) {
+        var chars = textChars.value;
+        var ids = wordIds.value;
+        var out = [];
+        var i = from;
+        while (i < to) {
+          if (ids[i] === -1) {
+            out.push({ word: false, chars: chars.slice(i, i + 1), start: i });
+            i++;
+          } else {
+            var w = ids[i];
+            var j = i;
+            while (j < to && ids[j] === w) j++;
+            out.push({ word: true, chars: chars.slice(i, j), start: i });
+            i = j;
+          }
+        }
+        return out;
+      }
+      function groupRow(row) { return wordGroups(row.start, row.end); }
+      /* 输入行词分组切片（measured）：仅取已提交部分；
+         start=全局索引（harness 逐词首字符对齐断言用） */
+      function inputGroup(grp) {
+        var ui = userInput.value;
+        var chars = textChars.value;
+        var end = Math.min(pos.value, grp.start + grp.chars.length);
+        var out = [];
+        for (var i = grp.start; i < end; i++) out.push({ ch: ui[i], ok: ui[i] === chars[i], start: i });
+        return out;
+      }
+
+      /* #35 镜像 chunk：verse=诗行块 / measured=词组序列 / 其余=全文单块 */
+      var mirrorChunks = computed(function () {
+        var chars = textChars.value;
+        var p = profile.value;
+        if (p.lineBreak === 'verse' && verses.value) {
+          return verses.value.map(function (v) {
+            return { block: true, word: false, chars: v.chars, start: v.start };
+          });
+        }
+        if (p.slot === 'measured') return wordGroups(0, chars.length);
+        return [{ block: false, word: false, chars: chars, start: 0 }];
+      });
+      var mirrorCharClass = computed(function () {
+        return profile.value.slot === 'fixed' ? 'ch-slot' : 'mw-char';
+      });
+
+      /* #35 measured 槽宽：mirror 逐字 offsetWidth（原文/输入两行同源 inline 绑定） */
+      var charWidths = ref([]);
+      function slotStyle(i) {
+        var w = charWidths.value[i];
+        return w ? { width: w + 'px' } : null;
+      }
+      /* #35 single 覆盖：错位置替换显示用户错字符（该位置不显示原文） */
+      function overlayChar(i, ch) {
+        if (i < pos.value) {
+          var u = userInput.value[i];
+          if (u !== ch) return u;
+        }
+        return ch;
+      }
 
       /* 行切分：由镜像测量得到的 lineStarts 派生；start/end 均为全文全局索引（末行 end = 全文长度） */
       var rows = computed(function () {
@@ -445,6 +601,7 @@
         /* V2.0 F1：换文时若已提交 ≥20 字且未完成且本轮未存档，保存为放弃记录（#26 once 互斥） */
         if (pos.value >= 20 && !done.value && !sessionSaved) { stopTimer(true); saveRecordOnce(true); }
         article.value = pickArticle(articlePool.value, article.value ? article.value.id : null);
+        charWidths.value = [];                         // #35：换文复位测宽槽（新文重测）
         resetState();
         nextTick(function () {
           measureLines();
@@ -542,28 +699,55 @@
         if (!inp || !box) return;
         var rowEl = rowEls[activeRowIndex.value];
         if (!rowEl) return;
-        var inLine = rowEl.querySelector(".row-input");
-        if (!inLine) return;
-        var inChars = inLine.querySelectorAll(".in-char");
-        var k = inChars.length;
-        var inLineRect = inLine.getBoundingClientRect();
         var rowsRect = box.getBoundingClientRect();
-        var compEl = inLine.querySelector(".composing");
-        var x = compEl
-          ? compEl.getBoundingClientRect().right                        // 组合期：拼音末端（任务 #20D）
-          : (k > 0 ? inChars[k - 1].getBoundingClientRect().right : inLineRect.left);
-        var inLineLeft = inLineRect.left - rowsRect.left + box.scrollLeft;  // 输入行左缘内容坐标
-        var left = x - rowsRect.left + box.scrollLeft;
+        var left, top;
+        var caretEl = null;
+        var inLineLeft = 0;
+        if (profile.value.slot === 'single') {
+          /* #35 single：锚点=当前字符 rect（top=行底、left=字符 left）；
+             composing-float 同锚（bottom 对齐行底、left=字符 left，CSS translateY(-100%)） */
+          var src = rowEl.querySelector('.row-source');
+          if (!src) return;
+          var spans = src.querySelectorAll('.char');
+          if (!spans.length) return;
+          var arow = rows.value[activeRowIndex.value];
+          var idx = pos.value - arow.start;
+          if (idx < 0) idx = 0;
+          if (idx > spans.length - 1) idx = spans.length - 1;
+          var cr = spans[idx].getBoundingClientRect();
+          left = cr.left - rowsRect.left + box.scrollLeft;
+          top = cr.bottom - rowsRect.top + box.scrollTop;
+          var fl = rowEl.querySelector('.composing-float');
+          if (fl) {
+            /* 绝对定位包含块=padding box（.row 有 2px 边框），
+               需减去 clientLeft/clientTop（边框宽）才能锚到字符真实 rect */
+            var rowRect = rowEl.getBoundingClientRect();
+            fl.style.left = (cr.left - rowRect.left - rowEl.clientLeft) + 'px';
+            fl.style.top = (cr.bottom - rowRect.top - rowEl.clientTop) + 'px';
+          }
+        } else {
+          var inLine = rowEl.querySelector('.row-input');
+          if (!inLine) return;
+          var inChars = inLine.querySelectorAll('.in-char');
+          var k = inChars.length;
+          var inLineRect = inLine.getBoundingClientRect();
+          var compEl = inLine.querySelector('.composing');
+          var x = compEl
+            ? compEl.getBoundingClientRect().right                        // 组合期：拼音末端（任务 #20D）
+            : (k > 0 ? inChars[k - 1].getBoundingClientRect().right : inLineRect.left);
+          inLineLeft = inLineRect.left - rowsRect.left + box.scrollLeft;  // 输入行左缘内容坐标
+          left = x - rowsRect.left + box.scrollLeft;
+          top = inLineRect.bottom - rowsRect.top + box.scrollTop;   // 紧贴输入行底边（任务 #20E：移除 +2）
+          caretEl = inLine.querySelector('.caret');
+        }
         var maxLeft = box.clientWidth - 240;
         if (maxLeft < 0) maxLeft = 0;
         if (left < 0) left = 0;
         if (left > maxLeft) left = maxLeft;
-        var top = inLineRect.bottom - rowsRect.top + box.scrollTop;   // 紧贴输入行底边（任务 #20E：移除 +2）
         inp.style.left = left + "px";
         inp.style.top = top + "px";
-        /* 光标与锚点同源：同一 left 换算到 .row-input 局部坐标 */
-        var caret = inLine.querySelector(".caret");
-        if (caret) caret.style.left = (left - inLineLeft) + "px";
+        /* 光标与锚点同源：同一 left 换算到 .row-input 局部坐标（single 无 .caret） */
+        if (caretEl) caretEl.style.left = (left - inLineLeft) + "px";
       }
 
       function setRowRef(i, el) { rowEls[i] = el; }
@@ -650,7 +834,7 @@
         if (!chars.length) { lineStarts.value = []; measuredKey = ""; measuredWidth = -1; return; }   // 全文为空 rows=[]
         var mirror = mirrorRef.value;
         if (!mirror) return;                                    // 镜像未就绪：保留上一次 rows（守卫 4）
-        var mspans = mirror.children;
+        var mspans = mirror.querySelectorAll('.mchar');          // #35：chunk 包裹后统一 .mchar 选取
         if (!mspans.length || mspans.length !== chars.length) return;  // 镜像未渲染/陈旧：保留上一次 rows
         var srcEl = null;
         for (var i = 0; i < rowEls.length; i++) {
@@ -679,6 +863,14 @@
           }
         }
         if (starts.length) lineStarts.value = starts;           // 测量失败保留上一次 rows（守卫 4）
+        /* #35 measured：逐字槽宽写入 charWidths（原文/输入两行 inline 同源绑定） */
+        if (profile.value.slot === 'measured') {
+          var ws = new Array(mspans.length);
+          for (var q = 0; q < mspans.length; q++) {
+            ws[q] = Math.round(mspans[q].getBoundingClientRect().width * 100) / 100;
+          }
+          charWidths.value = ws;
+        }
         measuredKey = key;
         measuredWidth = w;
         measureStats.full++;
@@ -738,6 +930,17 @@
         }
       });
 
+      /* #35 自测观测口：harness 断言用只读快照（rows/wordIds/verses/profile/槽宽数） */
+      window.TP_TypingPractice.probe = function () {
+        return {
+          profile: profile.value,
+          rows: rows.value.map(function (r) { return { start: r.start, end: r.end }; }),
+          wordIds: wordIds.value,
+          verses: verses.value ? verses.value.map(function (v) { return { start: v.start, len: v.chars.length }; }) : null,
+          charWidths: charWidths.value.length
+        };
+      };
+
       return {
         article: article,
         pos: pos,
@@ -758,6 +961,13 @@
         rowsBox: rowsBox,
         mirrorRef: mirrorRef,
         inputSlice: inputSlice,
+        groupRow: groupRow,
+        inputGroup: inputGroup,
+        slotStyle: slotStyle,
+        overlayChar: overlayChar,
+        profile: profile,
+        mirrorChunks: mirrorChunks,
+        mirrorCharClass: mirrorCharClass,
         setRowRef: setRowRef,
         focusInput: focusInput,
         onCompStart: onCompStart,
