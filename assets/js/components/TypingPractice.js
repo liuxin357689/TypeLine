@@ -31,21 +31,20 @@
       :key="ci"
       class="ch-slot"
     >{{ ch }}</span></div>
-  <!-- F3 模式工具条：分段控件（模式 全文/限时 + 限时时长档），持久化 typeline:prefs:v1；
-       标点开关已裁决取消，原文标点始终原样参与比对，故此处无标点控件 -->
+  <!-- F3 模式工具条 + 元信息合并单行（#28）：左=模式分段（全文/限时+时长档），中=篇/字数，
+       右=换一篇/重新开始；窄屏 flex-wrap 换行。持久化 typeline:prefs:v1；标点开关已裁决取消 -->
   <div class="tp-toolbar">
-    <div class="seg" role="group" aria-label="练习模式">
-      <button type="button" class="seg-btn" :class="{ on: prefs.mode === 'full' }" @click="setPref({ mode: 'full' })">全文</button>
-      <button type="button" class="seg-btn" :class="{ on: prefs.mode === 'timed' }" @click="setPref({ mode: 'timed' })">限时</button>
+    <div class="tp-bar-left">
+      <div class="seg" role="group" aria-label="练习模式">
+        <button type="button" class="seg-btn" :class="{ on: prefs.mode === 'full' }" @click="setPref({ mode: 'full' })">全文</button>
+        <button type="button" class="seg-btn" :class="{ on: prefs.mode === 'timed' }" @click="setPref({ mode: 'timed' })">限时</button>
+      </div>
+      <div v-if="prefs.mode === 'timed'" class="seg" role="group" aria-label="限时时长">
+        <button type="button" class="seg-btn" :class="{ on: prefs.timedSec === 30 }" @click="setPref({ timedSec: 30 })">30s</button>
+        <button type="button" class="seg-btn" :class="{ on: prefs.timedSec === 60 }" @click="setPref({ timedSec: 60 })">60s</button>
+        <button type="button" class="seg-btn" :class="{ on: prefs.timedSec === 120 }" @click="setPref({ timedSec: 120 })">120s</button>
+      </div>
     </div>
-    <div v-if="prefs.mode === 'timed'" class="seg" role="group" aria-label="限时时长">
-      <button type="button" class="seg-btn" :class="{ on: prefs.timedSec === 30 }" @click="setPref({ timedSec: 30 })">30s</button>
-      <button type="button" class="seg-btn" :class="{ on: prefs.timedSec === 60 }" @click="setPref({ timedSec: 60 })">60s</button>
-      <button type="button" class="seg-btn" :class="{ on: prefs.timedSec === 120 }" @click="setPref({ timedSec: 120 })">120s</button>
-    </div>
-  </div>
-
-  <div class="tp-meta">
     <span class="tp-meta-text" :title="article.title">第 {{ article.id }} 篇 · {{ totalChars }} 字</span>
     <div class="tp-meta-actions">
       <button class="btn ghost" type="button" @click="nextArticle">换一篇</button>
@@ -174,6 +173,7 @@
       var rowsBox = ref(null);
       var mirrorRef = ref(null);
       var rowEls = [];
+      var resetting = false;           // #28：重置/换文期间抑制 active 行居中跟随
       var lineStarts = ref([]);        // 自适应折行行首全局索引（任务 #12）
       var measureTimer = null;         // debounce 定时器
       var fontsPending = true;         // fonts.ready 回调存活守卫
@@ -405,6 +405,8 @@
       function resetState() {
         stopTimer(false);
         sessionSaved = false;                          // #26：新一轮练习复位存档互斥
+        resetting = true;                              // #28：抑制重置/换文期间的居中跟随
+        setTimeout(function () { resetting = false; }, 0);
         pos.value = 0;
         userInput.value = [];
         startTime.value = null;
@@ -556,13 +558,37 @@
         return out;
       }
 
-      /* active row 变化 → 自动滚入可视区（6.8）+ 更新 IME 锚点 */
-      watch(activeRowIndex, function (idx) {
+      /* #28 active 行自动居中跟随：变化时平滑滚动至 .rows 视觉中线；
+         目标 scrollTop = row.offsetTop + row.offsetHeight/2 - clientHeight/2，
+         clamp [0, scrollHeight-clientHeight]；behavior smooth，不支持回退 auto。
+         首次进入/换文（resetting）不强制跳动，仅跨行推进时跟随；
+         组合输入期间不触发额外滚动（仅 activeRowIndex 变化触发，天然满足） */
+      function centerActiveRow(idx) {
+        var box = rowsBox.value;
+        var el = rowEls[idx];
+        if (!box || !el) return;
+        var target = el.offsetTop + el.offsetHeight / 2 - box.clientHeight / 2;
+        var max = box.scrollHeight - box.clientHeight;
+        if (target < 0) target = 0;
+        if (target > max) target = max;
+        var smooth = typeof box.scrollTo === "function" &&
+          document.documentElement && "scrollBehavior" in document.documentElement.style;
+        if (smooth) box.scrollTo({ top: target, behavior: "smooth" });
+        else box.scrollTop = target;
+        /* 平滑未启动兜底（部分 headless/无合成器环境 smooth 不推进）：
+           120ms 后若 scrollTop 未移动且目标不同，回退 auto 直达；真实浏览器平滑已启动则不触发 */
+        if (smooth) {
+          var startTop = box.scrollTop;
+          setTimeout(function () {
+            if (Math.abs(box.scrollTop - startTop) < 1 && Math.abs(target - startTop) > 1) box.scrollTop = target;
+          }, 120);
+        }
+      }
+
+      /* active row 变化 → 居中跟随 + 更新 IME 锚点 */
+      watch(activeRowIndex, function (idx, oldIdx) {
         nextTick(function () {
-          var el = rowEls[idx];
-          if (el && el.scrollIntoView) {
-            el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-          }
+          if (!resetting && idx !== oldIdx) centerActiveRow(idx);
           updateCaretAnchor();
         });
       });

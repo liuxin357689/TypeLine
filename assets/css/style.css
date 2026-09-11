@@ -31,6 +31,8 @@
   --key-tested-text: #ffffff;
   --shadow-card: 0 8px 24px rgba(0, 0, 0, 0.08);
   --shadow-pill: 0 2px 8px rgba(0, 0, 0, 0.06);
+  /* 字符槽宽（#28 字号阶梯）：与原文行字号等宽；原文/输入/镜像三处同源 */
+  --ch-w: 17px;
 }
 
 [data-theme="dark"] {
@@ -79,6 +81,14 @@ body {
 }
 
 button { font-family: inherit; }
+
+/* ---------- 满屏弹性布局（#28）：壳定高 100dvh 的 flex 列（头部为同级 flex item 不被遮挡），
+   视图高度由 .app-main/.tp 的 flex:1 + min-height:0 撑满剩余 ---------- */
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100dvh;
+}
 
 /* ---------- 顶部应用栏 ---------- */
 .app-bar {
@@ -168,6 +178,12 @@ button { font-family: inherit; }
   max-width: 1080px;
   margin: 0 auto;
   padding: 24px;
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;              /* #28 防溢出：允许 flex 列收缩 */
+  overflow-y: auto;           /* #28：键盘/统计等高视图在主区内滚动兜底 */
+  display: flex;
+  flex-direction: column;
 }
 
 /* ---------- 按钮层级（8.7） ---------- */
@@ -207,7 +223,13 @@ button { font-family: inherit; }
 .btn.outline:hover { background: var(--tab-bg); }
 
 /* ---------- 打字视图 ---------- */
-.tp { position: relative; }   /* 隐藏测量镜像 .row-mirror 的定位上下文（任务 #12） */
+.tp {
+  position: relative;         /* 隐藏测量镜像 .row-mirror 的定位上下文（任务 #12） */
+  flex: 1 1 auto;             /* #28：撑满 .app-main 剩余高度 */
+  min-height: 0;              /* #28 防溢出 */
+  display: flex;
+  flex-direction: column;
+}
 
 /* 共享排版类（任务 #12）：真实行原文 .row-source 与测量镜像 .row-mirror 同源，
    font-family/weight/letter-spacing 继承全局等宽字体栈（不写死字号，
@@ -232,15 +254,6 @@ button { font-family: inherit; }
   padding: 0;
 }
 
-.tp-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
-}
-
 .tp-meta-text {
   font-size: 15px;
   color: var(--text-secondary);
@@ -253,7 +266,8 @@ button { font-family: inherit; }
   border-radius: 999px;
   background: var(--track);
   overflow: hidden;
-  margin-bottom: 16px;
+  margin-bottom: 12px;
+  flex: 0 0 auto;
 }
 
 .progress-bar {
@@ -266,7 +280,8 @@ button { font-family: inherit; }
 /* 行列表容器：可滚动 + active 自动滚入（B1）；position:relative 作 IME 锚点定位上下文（任务 #15A） */
 .rows {
   position: relative;
-  max-height: 54vh;
+  flex: 1 1 auto;             /* #28：删除 max-height:54vh，改弹性撑满 */
+  min-height: 320px;          /* #28 下限（768 断点 240px）；收缩防溢出由 .tp/.app-main 的 min-height:0 承担 */
   overflow-y: auto;
   padding: 4px 6px 4px 2px;
   scrollbar-width: thin;
@@ -283,8 +298,8 @@ button { font-family: inherit; }
   background: var(--card-bg);
   border: 2px solid transparent;
   border-radius: 12px;
-  padding: 10px 16px;
-  margin-bottom: 8px;
+  padding: 8px 16px;
+  margin-bottom: 6px;
   cursor: text;
   transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.25s ease;
   animation: tp-rise 0.4s ease both;
@@ -305,18 +320,21 @@ button { font-family: inherit; }
 
 /* 字号由媒体查询控制，镜像 / 真实行 / 输入行同源同步（任务 #12 条款 2 / #20C1） */
 .row-source,
-.row-mirror,
+.row-mirror {
+  font-size: 17px;
+  /* 镜像与原文同源字号（#28 字号阶梯）；line-height / word-break / white-space 由 .line-text 提供 */
+}
+
 .row-input {
-  font-size: 19px;
-  /* line-height / word-break / white-space 由共享排版类 .line-text 提供（任务 #12） */
+  font-size: 15px;            /* #28：输入行较小字形，槽宽仍用 --ch-w 与原文 1:1 对齐 */
 }
 
 /* 等宽字符槽（任务 #20C2）：原文行 / 输入行 / 镜像字符统一 1em 定宽，
    保证输入行第 i 字符与原文行第 i 字符 1:1 列对齐（半角 latin 错字不跑位） */
 .ch-slot {
   display: inline-block;
-  width: 1em;
-  text-align: center;
+  width: var(--ch-w);         /* #28：槽宽变量化（替换 1em），原文/输入/镜像同源等宽 */
+  text-align: center;         /* 较小字形在等宽槽内水平居中（输入行）；原文 CJK 满宽无差 */
 }
 
 /* 原文逐字四态（6.2） */
@@ -346,7 +364,7 @@ button { font-family: inherit; }
   align-items: center;
   position: relative;
   min-height: 1.7em;
-  margin-top: 4px;
+  margin-top: 2px;
   line-height: 1.7;
 }
 
@@ -422,7 +440,8 @@ button { font-family: inherit; }
   display: flex;
   align-items: center;
   gap: 16px;
-  margin-top: 16px;
+  margin-top: 10px;
+  flex: 0 0 auto;             /* #28：固定于 .rows 与统计条之间，不随滚动 */
 }
 
 .pos-info {
@@ -450,9 +469,12 @@ button { font-family: inherit; }
 .hud {
   display: flex;
   justify-content: center;
+  align-items: center;
   flex-wrap: wrap;
   gap: 16px;
-  margin-top: 16px;
+  margin-top: 8px;
+  min-height: 56px;           /* #28：列底统计条约 56px，不随滚动 */
+  flex: 0 0 auto;
 }
 
 .pill {
@@ -692,10 +714,12 @@ button { font-family: inherit; }
   .brand-name { font-size: 16px; }
   .tab { padding: 8px 16px; font-size: 13px; }
   .app-main { padding: 16px; }
-  .row-source, .row-mirror, .row-input { font-size: 17px; }
+  :root { --ch-w: 16px; }
+  .row-source, .row-mirror { font-size: 16px; }
+  .row-input { font-size: 14px; }
   .row { padding: 8px 12px; margin-bottom: 6px; }
-  .row-input { margin-top: 3px; }
-  .rows { max-height: 48vh; }
+  .row-input { margin-top: 2px; }
+  .rows { min-height: 240px; }
   .hud { gap: 8px; }
   .pos-indicator { gap: 8px; }
   .pos-info { font-size: 12px; }
@@ -890,9 +914,12 @@ button { font-family: inherit; }
  * F3 模式工具条（分段控件）+ 限时提示 + toast（独立新增，不动既有规则）
  * ========================================================================== */
 .tp-toolbar {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  margin-bottom: 14px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px 16px; flex-wrap: wrap;
+  margin-bottom: 12px;
+  flex: 0 0 auto;             /* #28：工具条+元信息合并单行，固定列顶 */
 }
+.tp-bar-left { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
 .seg {
   display: flex; gap: 4px; padding: 4px;
   background: var(--tab-bg); border-radius: 999px;
