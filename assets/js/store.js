@@ -71,6 +71,7 @@
       accuracy:    (opts.accuracy !== undefined) ? opts.accuracy : 100,
       wrongChars:  opts.wrongChars  || [],
       mode:        opts.mode        || 'full',   /* 'full' 常规 / 'review' 复练（隔离统计） / 'timed' 限时（F3，计入统计） */
+      cat:         opts.cat         || '',       /* #33 所属分类 id（short/long/code/english/poetry）；旧记录无此字段→统计显示「历史」 */
       abandoned:   !!opts.abandoned
     };
   }

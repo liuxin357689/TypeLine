@@ -26,13 +26,16 @@
       document.write('<script src="https://cdn.jsdelivr.net/npm/vue@3.5.42/dist/vue.global.prod.js"><\/script>');
     }
   </script>
-  <script src="assets/js/data/articles.js"></script>
+  <!-- #33 书库：catalog.js 仅注册表（轻量同步）；分类正文由 data-loader.js 按需动态注入 -->
+  <script src="assets/js/data/catalog.js"></script>
   <script src="assets/js/data/keyboard.js"></script>
+  <script src="assets/js/data-loader.js"></script>
   <script src="assets/js/store.js"></script>
   <script src="assets/js/components/TypingPractice.js"></script>
   <script src="assets/js/components/KeyboardTest.js"></script>
   <script src="assets/js/components/StatsView.js"></script>
   <script src="assets/js/components/ReviewView.js"></script>
+  <script src="assets/js/components/HomeView.js"></script>
   <script src="assets/js/app.js"></script>
 </body>
 </html>

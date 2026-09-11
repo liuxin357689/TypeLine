@@ -135,6 +135,8 @@
       <div class="stats-list-header">
         <h3 class="stats-section-title">练习历史（共 {{ records.length }} 条）</h3>
         <div class="stats-list-actions">
+          <!-- #33：返回书库分类首页（用户追加需求，样式复用 .btn ghost 体系） -->
+          <button type="button" class="btn ghost" @click="goHomeCat">返回</button>
           <!-- #27 错字本简约化：平铺区块改为按钮（计数角标）+ 模态弹窗 -->
           <button v-if="wrongBook.length" type="button" class="btn ghost wb-open" @click="openWb">
             错字本<span class="wb-badge">{{ wrongBook.length }}</span>
@@ -161,7 +163,7 @@
         <!-- 数据行（最新在前） -->
         <div class="list-row" v-for="rec in displayRecords" :key="rec.id">
           <span class="lc-time">{{ fmtTs(rec.ts) }}</span>
-          <span class="lc-art">{{ rec.mode === 'review' ? '复练' : '第' + rec.articleId + '篇' }}</span>
+          <span class="lc-art">{{ artLabel(rec) }}</span>
           <span class="lc-num">{{ rec.chars }}</span>
           <span class="lc-num">{{ rec.cpm }}</span>
           <span class="lc-num">{{ rec.accuracy }}%</span>
@@ -215,6 +217,7 @@
       /* inject 由 app.js provide('switchTab') 提供；降级为空函数 */
       var switchTab = inject('switchTab', function () {});
       var startReview = inject('startReview', function () {});   /* F2：进复练模式 */
+      var goHome = inject('goHome', null);                       /* #33：返回书库首页 */
 
       /* #26：setup 即读一次 + onMounted 再读，双保险消除挂载时序空窗导致空态 */
       var records      = ref((window.TP_Store && window.TP_Store.getAll) ? window.TP_Store.getAll() : []);
@@ -269,6 +272,18 @@
       function closeWb() { wbOpen.value = false; }
       function onWbKey(e) { if (e.key === 'Escape') wbOpen.value = false; }
       function goReview() { closeWb(); startReview(wrongBook.value); }
+
+      /* #33：返回按钮回分类首页（不清当前分类，首页可「继续上次」） */
+      function goHomeCat() { if (typeof goHome === 'function') goHome(); }
+      /* #33：历史标签——复练→「复练」；有 cat→分类名；旧记录无 cat→「历史」 */
+      function artLabel(rec) {
+        if (rec.mode === 'review') return '复练';
+        if (rec.cat && window.TP_DataLoader) {
+          var e = window.TP_DataLoader.getEntry(rec.cat);
+          if (e) return e.name;
+        }
+        return '历史';
+      }
 
       /* SVG 尺寸常量（直接暴露给模板） */
       var cw = CW, ch = CH, cl = CL, cr = CR;
@@ -404,6 +419,8 @@
         deleteRec:    deleteRec,
         toggleClear:  toggleClear,
         goTyping:     goTyping,
+        goHomeCat:    goHomeCat,
+        artLabel:     artLabel,
         wrongBook:    wrongBook,
         goReview:     goReview,
         wbOpen:       wbOpen,

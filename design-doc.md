@@ -28,7 +28,7 @@
 | 联网 | 用户确认可联网，离线非必须 |
 | 构建步骤 | **无**。纯 HTML + 经典 `<script>`，双击 `index.html` 直接运行 |
 | 脚本类型 | **经典 `<script>`，禁止 `type="module"`**（`file://` 下 ES 模块受 CORS 限制，无法双击打开） |
-| 模块共享 | 多 JS 文件通过挂载 **window 全局命名空间** 共享（如 `window.TP_ARTICLES`、`window.TP_TypingPractice`） |
+| 模块共享 | 多 JS 文件通过挂载 **window 全局命名空间** 共享（如 `window.TP_CATALOG`/`window.TP_CATS`（#33 书库，原 `window.TP_ARTICLES` 已废）、`window.TP_TypingPractice`） |
 | API 风格 | **Composition API**（从全局 `Vue` 解构 `createApp/ref/reactive/computed/watch/onMounted/onUnmounted`） |
 | 模板方式 | 组件模板一律用 **JS 模板字符串**（`template: \`...\``）；`index.html` 只放 `<div id="app"></div>`，规避 in-DOM 模板的大小写不敏感与表格解析陷阱 |
 
@@ -87,12 +87,12 @@
 | V2+ 功能 | 说明 |
 | --- | --- |
 | 历史记录与统计 | localStorage 持久化练习记录 + 趋势展示（速度/准确率随时间变化） |
-| 文章分类 / 难度分级 | 文章增 `category`/`difficulty` 字段，侧边栏目录筛选 |
-| 文章库扩充 | 从 20 篇扩充至 50+ 篇（V2.0 F4 已扩至 30 篇，含 10 篇 1000–1500 字长文；50+ 为后续目标） |
+| 文章分类 / 难度分级 | 文章增 `category`/`difficulty` 字段，侧边栏目录筛选（**#33 已以书库五分类 + 首页选择界面落地**，见 §15） |
+| 文章库扩充 | 从 20 篇扩充至 50+ 篇（V2.0 F4 扩至 30 篇；**#33 书库外部化后共 92 篇/组**：短文 20 + 长文 10 + 程序预存字 32 + 英文 10 + 诗文 20，见 §15） |
 | 性能增强（可选） | requestAnimationFrame 渲染节流、批量持久化（Range API 换行检测已随裁决7 落地为 V1 自适应行切分，见 §6.8/§13.5） |
 
 ### 2.4 V1 架构如何为 V2 预留扩展点
-1. **文章对象预留可扩展字段位**：`TP_ARTICLES` 元素结构为 `{ id, text }`，V2 增 `category`/`difficulty` 字段即可，读取逻辑无需改动（见第 7 章 schema）。
+1. **文章对象预留可扩展字段位**：分类内容元素结构为 `{ id, title, text }`（#33 起挂 `window.TP_CATS[分类id].articles`，原 `TP_ARTICLES` 已废），扩展字段位预留不变（见第 7 章 schema 与 §15）。
 2. **组件化便于新增视图**：新增「统计」Tab 只需新建一个组件 + 在根组件 Tab 列表与 `<component :is>` 中注册，天然解耦。
 3. **独立数据文件入口**：`assets/js/data/` 目录独立，V2 历史记录可新增 `history.js`（挂 `window.TP_HISTORY_STORE`），与文章/键盘数据隔离。
 4. **数据驱动键盘映射**：`TP_KEYBOARD_LAYOUT` → 自动生成 code→key 映射，V2 若增键位或指法分区仅改数据数组。
@@ -145,7 +145,7 @@
 ### 4.1 总体架构
 Vue 3 组件化 + 响应式。全局构建 `Vue` 暴露 `createApp` 等 API；各 JS 文件通过 `window` 全局命名空间共享数据与组件；根组件挂载到 `#app`，通过 `<component :is>` 切换子视图。
 
-> **数据读取时机（修复细化）**：子组件对全局数据（`window.TP_ARTICLES` / `window.TP_KEYBOARD_LAYOUT`）的读取一律在 **`setup()` 执行时惰性读取**（而非模块加载即求值）。由于脚本按 data → components → app 顺序同步加载，`setup()` 在 `createApp().mount()` 时才运行，此刻数据必已就绪；惰性读取可彻底规避“组件文件先于数据文件求值导致读到 undefined”的时序隐患。
+> **数据读取时机（修复细化）**：子组件对全局数据（`window.TP_CATS`（#33，经 data-loader 按需注入）/ `window.TP_KEYBOARD_LAYOUT`）的读取一律在 **`setup()` 执行时惰性读取**（而非模块加载即求值）。同步脚本按 data → components → app 顺序加载，`setup()` 在 `createApp().mount()` 时才运行；分类数据另由路由保证「加载完成才进入打字视图」（§15.2），惰性读取 + 按需加载双重规避时序隐患。
 
 ### 4.2 多文件结构与职责
 ```
@@ -156,9 +156,16 @@ c:\Users\liuxin\Documents\QoderCN\2026-09-10\chat-1\
 │   │   └── style.css                       # CSS 变量(亮/暗)、全局布局、组件样式、768px 断点
 │   └── js/
 │       ├── data/
-│       │   ├── articles.js                 # window.TP_ARTICLES = [{id,title,text}...]（30 篇：短篇 1–20 + 长文 21–30）
+│       │   ├── catalog.js                  # window.TP_CATALOG 书库注册表 + TP_CATS 容器初始化（#33）
+│       │   ├── cat-short.js                # window.TP_CATS.short（短文 20 篇，id 1–20，按需注入）
+│       │   ├── cat-long.js                 # window.TP_CATS.long（长文 10 篇，id 21–30）
+│       │   ├── cat-code.js                 # window.TP_CATS.code（程序预存字 32 组，id 101–132）
+│       │   ├── cat-english.js              # window.TP_CATS.english（英文选段 10 篇，id 201–210）
+│       │   ├── cat-poetry.js               # window.TP_CATS.poetry（古诗文名句 20 篇，id 301–320）
 │       │   └── keyboard.js                 # window.TP_KEYBOARD_LAYOUT = [...104 键...]
+│       ├── data-loader.js                  # window.TP_DataLoader（ensureCategory 动态 script 按需加载，#33）
 │       ├── components/
+│       │   ├── HomeView.js                 # window.TP_HomeView（书库首页：分类卡片网格 + 继续上次，#33）
 │       │   ├── TypingPractice.js           # window.TP_TypingPractice（打字练习组件，Composition API）
 │       │   └── KeyboardTest.js             # window.TP_KeyboardTest（键盘测试组件，Composition API）
 │       └── app.js                          # 根组件（导航/主题切换/Tab）+ createApp().mount('#app')
@@ -170,9 +177,12 @@ c:\Users\liuxin\Documents\QoderCN\2026-09-10\chat-1\
 | --- | --- | --- |
 | `index.html` | 承载 `<div id="app">`；按固定顺序引入 Vue CDN 与各 JS（经典脚本）；引入 `style.css` | — |
 | `assets/css/style.css` | 所有 CSS 变量（`:root` 亮色 + `[data-theme="dark"]` 暗色）、布局、组件样式、断点 | — |
-| `data/articles.js` | 30 篇文章数据数组（短篇 20 + 长文 10） | `window.TP_ARTICLES` |
+| `data/catalog.js` | 书库注册表（id/name/desc/file/count）+ `TP_CATS` 容器初始化（#33） | `window.TP_CATALOG` / `window.TP_CATS` |
+| `data/cat-*.js` | 五分类正文数据（.js 壳 + 纯 JSON 内容，按需动态注入） | `window.TP_CATS[id]` |
+| `data-loader.js` | 分类按需加载器 `ensureCategory(id, cb)`（动态 script，onload/onerror，pending 去重） | `window.TP_DataLoader` |
 | `data/keyboard.js` | 104 键布局数据数组 | `window.TP_KEYBOARD_LAYOUT` |
-| `components/TypingPractice.js` | 打字练习组件（IME、逐字对比、退格、统计、自适应行切分镜像测量、完成弹窗逻辑） | `window.TP_TypingPractice` |
+| `components/HomeView.js` | 书库首页（分类卡片网格、继续上次快捷入口、加载态/错误提示，#33） | `window.TP_HomeView` |
+| `components/TypingPractice.js` | 打字练习组件（IME、逐字对比、退格、统计、自适应行切分镜像测量、完成弹窗逻辑；#33 起文章池=当前分类） | `window.TP_TypingPractice` |
 | `components/KeyboardTest.js` | 键盘测试组件（keydown 委托、code→key 映射、testedKeys、进度、重置） | `window.TP_KeyboardTest` |
 | `app.js` | 根组件（导航栏、主题切换、Tab 切换）+ 应用挂载 | — |
 
@@ -180,11 +190,14 @@ c:\Users\liuxin\Documents\QoderCN\2026-09-10\chat-1\
 `index.html` 中 `<script>` **必须严格按以下顺序**（经典脚本，非 module，同步加载）：
 ```
 1. Vue CDN            → 提供全局 window.Vue
-2. data/articles.js   → window.TP_ARTICLES
+2. data/catalog.js    → window.TP_CATALOG 注册表 + TP_CATS 容器（#33，轻量同步）
 3. data/keyboard.js   → window.TP_KEYBOARD_LAYOUT
-4. components/TypingPractice.js → window.TP_TypingPractice（依赖 TP_ARTICLES）
-5. components/KeyboardTest.js   → window.TP_KeyboardTest（依赖 TP_KEYBOARD_LAYOUT）
-6. app.js             → 根组件（依赖上述组件）+ createApp(root).mount('#app')
+4. data-loader.js     → window.TP_DataLoader（#33，分类正文运行时按需动态注入 cat-*.js）
+5. store.js           → window.TP_Store
+6. components/TypingPractice.js → window.TP_TypingPractice（依赖 TP_CATS，setup 时惰性读）
+7. components/KeyboardTest.js   → window.TP_KeyboardTest（依赖 TP_KEYBOARD_LAYOUT）
+8. components/HomeView.js       → window.TP_HomeView（#33，依赖 TP_CATALOG/TP_DataLoader）
+9. app.js             → 根组件（依赖上述组件）+ createApp(root).mount('#app')
 ```
 - **顺序原则**：Vue CDN → data → components → app。后者依赖前者，不可颠倒。
 - **禁止 `type="module"`**：`file://` 下 ES 模块受 CORS 限制无法双击打开，故全部用经典脚本 + window 全局共享。
@@ -400,19 +413,27 @@ pos === text.length → done=true, clearInterval, 弹完成弹窗
 
 > 前端严格遵循本契约。数据以 JS 常量形式内置于 `assets/js/data/*.js`，挂 `window` 全局命名空间。
 
-### 7.1 文章数据（`assets/js/data/articles.js`）
+### 7.1 书库数据（#33：`catalog.js` 注册表 + `cat-*.js` 五分类，原 `articles.js`/`TP_ARTICLES` 已废）
 ```js
-// 30 篇中文日常文章；结构预留 V2 扩展字段位（V1 不填充、不使用）
-window.TP_ARTICLES = [
-  { id: 1,  text: "……" },   // id 1–20 短篇：纯中文字符串，150–300 字，正常标点
-  { id: 2,  text: "……" },
-  { id: 21, text: "……" },   // id 21–30 长文（V2.0 F4）：1000–1500 字，正常标点
-  // … 共 30 篇，id 从 1 到 30 唯一
+// catalog.js（轻量同步）：书库注册表 + 分类容器初始化
+window.TP_CATS = window.TP_CATS || {};
+window.TP_CATALOG = [
+  { id:"short",   name:"短文",       desc:"…", file:"cat-short.js",   count:20 },
+  { id:"long",    name:"长文",       desc:"…", file:"cat-long.js",    count:10 },
+  { id:"code",    name:"程序预存字", desc:"…", file:"cat-code.js",    count:32 },
+  { id:"english", name:"英文选段",   desc:"…", file:"cat-english.js", count:10 },
+  { id:"poetry",  name:"古诗文名句", desc:"…", file:"cat-poetry.js",  count:20 }
 ];
+// cat-*.js（按需动态注入）：.js 壳 + 纯 JSON 内容，挂 window.TP_CATS[id]
+window.TP_CATS.short = {
+  id:"short", name:"短文",
+  articles:[ { id:1, title:"…", text:"…" } /* … count 篇，id 全局唯一 */ ]
+};
 ```
-- **V1 字段**：`id`（Number，唯一）、`text`（String，短篇 150–300 字 / 长文 1000–1500 字，正常标点，纯中文日常内容）。
-- **约束**：`id` 唯一不重复；`text` 内容经 Vue 文本插值 `{{ }}` 渲染时默认转义（防 XSS/破坏 DOM）。
-- **加载**：随机选取一篇；「换一篇」时避免与当前同 `id`。
+- **注册表字段**：`id`（String，分类唯一键）、`name`（显示名）、`desc`（卡片描述）、`file`（数据文件名，相对 `assets/js/data/`）、`count`（篇数，与数据文件实际长度一致）。
+- **内容字段**：`id`（Number，全分类唯一：短文 1–20 / 长文 21–30 / 程序预存字 101–132 / 英文 201–210 / 诗文 301–320）、`title`（String）、`text`（String）。**程序预存字为纯单词列表**：空格分隔独立单词（各组 20–40 词、组内不重复），不含句子/标点/括号/分号，字符集仅 `[A-Za-z0-9_ ]`、单词间单空格，大小写敏感错字判定。**诗文不用字面 `\n`**：V1 引擎将 `text` 每个字符视为可输入槽位，而单行 `<input type=text>` 无法输入换行符，字面 `\n` 会阻塞完成/存档；诗文按中文标点分句，视觉换行由自适应行切分（镜像 `pre-wrap` 按宽自然折行）统一处理。
+- **约束**：`text` 经 Vue 文本插值 `{{ }}` 渲染默认转义（防 XSS/破坏 DOM）。
+- **加载**：首页卡片点击→`ensureCategory(id,cb)` 按需注入→`TP_CATS[cat].articles` 为当前池；「换一篇」限当前分类随机且避免连抽同 `id`（池仅 1 篇时回退全池）。
 
 ### 7.2 键盘布局数据（`assets/js/data/keyboard.js`，数据驱动）
 ```js
@@ -624,7 +645,7 @@ font-family: "SF Mono", "Consolas", "PingFang SC", "Microsoft YaHei", monospace;
 | A9 | 视图切换 | 打字/键盘 Tab 切换正常（`<component :is>`）；切走后 document keydown 监听被移除、无泄漏、无并排残留 |
 | A10 | 主题切换 | 一键切换亮暗；全元素颜色一致（无硬编码色、无闪屏）；缺省暗色 |
 | A11 | 主题持久化 | 主题偏好**跨刷新保留**（写读 `localStorage['tp_theme']`） |
-| A12 | 20 篇可切换 | 文章库共 20 篇（V2.0 F4 起为 30 篇），「换一篇」可覆盖切换（不与当前同 id） |
+| A12 | 分类内可切换 | 书库五分类（#33），选定分类后「换一篇」限当前分类随机覆盖切换（不与当前同 id）；未选分类时打字页签回落首页 |
 | A13 | 响应式 | 768px 断点下键盘 Grid 不溢出、统计条换行、布局不错乱；打字视图行切分随任意宽度变化自适应重算（无固定字数/行） |
 | A14 | 健壮性 | B1–B21 边界/异常场景均按第 10 章期望行为处理，不崩溃 |
 | A15 | CDN 降级 | 模拟 Vue CDN 加载失败时不白屏，显示友好提示 |
@@ -756,10 +777,34 @@ V2 新增的所有 localStorage 键统一使用 `typeline:` 前缀，与 V1 既�
 持久化介质仅为浏览器 localStorage（无后端 / 无 Cookie / 无 IndexedDB），分三层：
 
 1. **偏好层**：`tp_theme`（V1 遗留键），主题切换即写、启动时读取。
-2. **数据层**：统一封装于 `window.TP_Store`（assets/js/store.js），键 `typeline:records:v1`，值为 JSON 数组；单条记录字段 `{id, ts, articleId, chars, durationMs, cpm, accuracy, wrongChars, mode, abandoned}`；写入时机 = 练习完成、换文、切视图（后两者仅当已提交 ≥20 字，记 `abandoned` 中途记录）；按裁决不做 `beforeunload` 存档；500 条环形上限、超限丢最旧；读取降级见 14.2；`aggregateWrongChars()` 于读取侧按「应打字」聚合次数 / 最近时间 / 最多 5 条去重上下文，供 F2 错字本使用；统计页签于组件挂载时全量读取渲染。
+2. **数据层**：统一封装于 `window.TP_Store`（assets/js/store.js），键 `typeline:records:v1`，值为 JSON 数组；单条记录字段 `{id, ts, articleId, chars, durationMs, cpm, accuracy, wrongChars, mode, cat, abandoned}`（`cat`=#33 新增所属分类 id，旧记录无此字段→统计显示「历史」）；写入时机 = 练习完成、换文、切视图（后两者仅当已提交 ≥20 字，记 `abandoned` 中途记录）；按裁决不做 `beforeunload` 存档；500 条环形上限、超限丢最旧；读取降级见 14.2；`aggregateWrongChars()` 于读取侧按「应打字」聚合次数 / 最近时间 / 最多 5 条去重上下文，供 F2 错字本使用；统计页签于组件挂载时全量读取渲染。
 3. **会话层（刻意不持久化）**：键盘测试已测键标记、当前练习进度、组合中拼音串等为组件内存状态，刷新即重置；V1 口径中键盘标记「持久显示」指会话内不闪烁消失，非跨会话存储。
 
 **已知边界**：清浏览器数据 / 换设备即全丢，无跨端同步（纯前端约束），V2 路线图 F9（JSON 导出/导入）预留换机迁移；500 条环形覆盖使极长期历史明细滚动丢失；直接关闭标签页的中途进度不存档（无 beforeunload）。
+
+---
+
+## 15. 书库与分类（#33 新增）
+
+### 15.1 裁决定稿
+- **载体 A**：分类数据 = `.js` 壳 + 纯 JSON 内容（`window.TP_CATS[id] = {…}`），由 `data-loader.js` **动态 script 按需注入**；保留 `file://` 双击直跑（经典脚本、无构建、无 `type=module`）。
+- **五分类**：`short` 短文（迁移原 `articles.js` id 1–20，20 篇）、`long` 长文（id 21–30，10 篇）、`code` 程序预存字（Java/Python/JavaScript/C++ 各 8 组纯单词列表：关键字 + 高频标识符/库词，空格分隔、无句子/标点/括号，字符集仅 `[A-Za-z0-9_ ]`、含大小写下划线，共 32 组）、`english` 英文选段（10 篇 80–150 词）、`poetry` 古诗文名句（20 篇 40–120 字经典公共版权诗文，标点分句、不用字面 `\n`（避免不可输入字符阻塞完成），换行由自适应行切分处理）。**数字符号混排分类作废**。
+
+### 15.2 加载与路由
+- **注册表**（`catalog.js`，轻量同步）：`window.TP_CATALOG = [{id,name,desc,file,count}]`；`catalog.js` 内 `window.TP_CATS = window.TP_CATS || {}` 保证未加载分类 `TP_CATS.code === undefined`。
+- **加载器**（`data-loader.js`，ES5）：`ensureCategory(id, cb)`——`TP_CATS[id]` 已载直接同步 `cb(null, entry)`；未载查 `TP_CATALOG` 得 `file`、`createElement('script')` 注入 `assets/js/data/<file>`，`onload`（校验挂载）→`cb(null, TP_CATS[id])`、`onerror`（移除节点允许重试）→`cb(err)`；同 id 并发经 `pending` map 排队共享一次注入。
+- **app.js 路由**：默认视图 `home`；`currentCat` ref（null=未选，初始从 `prefs.cat` 恢复选择状态）；`goTab('typing')` 未选分类→回落 `home`；`currentTabComp` 中 `home` 及 `typing` 无 cat→`TP_HomeView`；`provide('selectCategory', (id,cb))`（`ensureCategory`→`setPrefs({cat:id})`→`currentTab='typing'`→cb）、`provide('goHome', opts)`（`opts.clearCat` 清 `currentCat`；`prefs.cat` 保留供「继续上次」）、`provide('currentCat')`。
+
+### 15.3 首页 HomeView
+- 卡片网格（名称 + 描述 + 篇数 `count`）；顶部「继续上次：XX」快捷按钮（`prefs.cat` 命中注册表才显示，`btn primary`）；点击卡片→`inject selectCategory(id,cb)`，加载态禁用 + `加载中…`，失败展示 `.home-error`；双主题全走 CSS 变量；375 窄屏 `.home-grid` 单列不溢出。
+
+### 15.4 打字页与统计的分类接入
+- **TypingPractice**：文章池 = `TP_CATS[cat].articles`（`inject currentCat`，`setup` 惰性读）；工具条 `.cat-chip` 显示分类名 + 「换分类」按钮（`goHome({clearCat:true})`，组件卸载触发 `onUnmounted` 既有 ≥20 字放弃存档语义，与切视图一致）；「换一篇」`pickArticle(pool, excludeId)` 限当前分类随机、避免连抽同篇；`saveRecord` 传 `cat`。
+- **store.js**：`createRecord` 增 `cat`（`opts.cat || ''`）；`prefs.cat` 经 `normPrefs` 未知字段透传免改持久化。
+- **StatsView**：历史标签 `artLabel(rec)`——`review`→「复练」/ 有 `cat`→分类名 / 旧记录无 `cat`→「历史」；练习历史操作区增「返回」按钮（`btn ghost`）→`inject goHome()`（不清分类，首页可「继续上次」）回分类首页。
+
+### 15.5 验收断言（#33）
+- 双击 `file://` 直达首页五卡片（`count` 与注册表一致）；未选 `code` 前 `window.TP_CATS.code === undefined`、选后定义（按需加载）；「换一篇」5 连抽均属当前分类且无连抽同篇；`code` 打错大小写/下划线判 wrong；`english` 空格节奏与错字分离正常；`poetry` 渲染换行正常；旧记录（无 `cat`）统计/错字本兼容；限时/复练/错字本弹窗/存档幂等/键盘/双主题/375 全回归；`node --check` 全部、0 error 0 warning。
 
 ---
 

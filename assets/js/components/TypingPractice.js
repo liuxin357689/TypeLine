@@ -8,16 +8,17 @@
  * ========================================================================== */
 (function () {
   var Vue = window.Vue;
-  var ref = Vue.ref, computed = Vue.computed, watch = Vue.watch,
+  var ref = Vue.ref, computed = Vue.computed, watch = Vue.watch, inject = Vue.inject,
       nextTick = Vue.nextTick, onMounted = Vue.onMounted, onUnmounted = Vue.onUnmounted;
 
-  function pickArticle(excludeId) {
-    // 惰性读取数据层（评审 P2-5）：setup/调用时才取 window.TP_ARTICLES，避免加载顺序变动静默变空
-    var ARTICLES = window.TP_ARTICLES || [];
+  /* #33：文章池改由调用方传入（当前分类 TP_CATS[cat].articles）；
+     excludeId 防连抽同篇（池仅 1 篇时回退全池） */
+  function pickArticle(pool, excludeId) {
+    var ARTICLES = pool || [];
     if (!ARTICLES.length) return { id: 0, title: "", text: "" };
-    var pool = ARTICLES.filter(function (a) { return a.id !== excludeId; });
-    if (!pool.length) pool = ARTICLES;
-    return pool[Math.floor(Math.random() * pool.length)];
+    var cand = ARTICLES.filter(function (a) { return a.id !== excludeId; });
+    if (!cand.length) cand = ARTICLES;
+    return cand[Math.floor(Math.random() * cand.length)];
   }
 
   function pad2(n) { return n < 10 ? "0" + n : "" + n; }
@@ -31,10 +32,12 @@
       :key="ci"
       class="ch-slot"
     >{{ ch }}</span></div>
-  <!-- F3 模式工具条 + 元信息合并单行（#28）：左=模式分段（全文/限时+时长档），中=篇/字数，
-       右=换一篇/重新开始；窄屏 flex-wrap 换行。持久化 typeline:prefs:v1；标点开关已裁决取消 -->
+  <!-- F3 模式工具条 + 元信息合并单行（#28）：左=分类 chip+换分类+模式分段（全文/限时+时长档），
+       中=篇/字数，右=换一篇/重新开始；窄屏 flex-wrap 换行。持久化 typeline:prefs:v1 -->
   <div class="tp-toolbar">
     <div class="tp-bar-left">
+      <span class="cat-chip" :title="'当前分类：' + catName">{{ catName }}</span>
+      <button class="btn ghost" type="button" @click="changeCategory">换分类</button>
       <div class="seg" role="group" aria-label="练习模式">
         <button type="button" class="seg-btn" :class="{ on: prefs.mode === 'full' }" @click="setPref({ mode: 'full' })">全文</button>
         <button type="button" class="seg-btn" :class="{ on: prefs.mode === 'timed' }" @click="setPref({ mode: 'timed' })">限时</button>
@@ -159,8 +162,26 @@
 </div>
 `,
     setup: function () {
+      /* ---------- #33 分类接入：池=TP_CATS[cat].articles（app.js 保证挂载后才进入本视图） ---------- */
+      var currentCat = inject('currentCat', null);
+      var goHome = inject('goHome', null);
+      var catId = computed(function () { return (currentCat && currentCat.value) || ''; });
+      var articlePool = computed(function () {
+        var cat = (window.TP_CATS || {})[catId.value];
+        return (cat && cat.articles) || [];
+      });
+      var catName = computed(function () {
+        var e = window.TP_DataLoader && window.TP_DataLoader.getEntry(catId.value);
+        return e ? e.name : '未选分类';
+      });
+      /* 换分类：回首页并清当前分类；组件随卸载触发 onUnmounted 既有
+         ≥20 字放弃存档语义（与切视图一致，裁决要求）；prefs.cat 保留供「继续上次」 */
+      function changeCategory() {
+        if (typeof goHome === 'function') goHome({ clearCat: true });
+      }
+
       /* ---------- 响应式状态（4.5） ---------- */
-      var article = ref(pickArticle(null));
+      var article = ref(pickArticle(articlePool.value, null));
       var pos = ref(0);
       var userInput = ref([]);          // 每位实际输入字符（与原文分离，9.2）
       var startTime = ref(null);
@@ -423,7 +444,7 @@
       function nextArticle() {
         /* V2.0 F1：换文时若已提交 ≥20 字且未完成且本轮未存档，保存为放弃记录（#26 once 互斥） */
         if (pos.value >= 20 && !done.value && !sessionSaved) { stopTimer(true); saveRecordOnce(true); }
-        article.value = pickArticle(article.value ? article.value.id : null);
+        article.value = pickArticle(articlePool.value, article.value ? article.value.id : null);
         resetState();
         nextTick(function () {
           measureLines();
@@ -502,6 +523,7 @@
           accuracy:   accuracy.value,    /* = round(correctCount/pos*100) */
           wrongChars: collectWrongChars(),
           mode:       isTimed.value ? 'timed' : 'full',   /* F3：限时记录 mode='timed'（计入统计） */
+          cat:        catId.value,                         /* #33：记录所属分类（旧记录无此字段→统计显示「历史」） */
           abandoned:  abandoned
         });
         window.TP_Store.addRecord(rec);
@@ -747,6 +769,8 @@
         nextArticle: nextArticle,
         prefs: prefs,
         setPref: setPref,
+        catName: catName,
+        changeCategory: changeCategory,
         isTimed: isTimed,
         remaining: remaining,
         remainingText: remainingText,
