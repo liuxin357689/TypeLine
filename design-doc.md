@@ -54,7 +54,7 @@
 ### 2.1 V1 范围（本次唯一实现 + 测试范围）
 
 **A. 打字练习模块**
-- 20 篇中文日常文章（每篇 150–300 字，正常标点），随机加载。
+- 30 篇中文日常文章（id 1–20 短篇，每篇 150–300 字；id 21–30 为 V2.0 F4 长文，每篇 1000–1500 字；正常标点），随机加载覆盖全部 30 篇。
 - 逐字对比反馈：正确/错误/当前光标/未输入四态标色。
 - 中文 IME 兼容（组合输入不误触发、整句 commit 后逐字入库）。
 - 退格删除（回退上一位，不越界）。
@@ -88,7 +88,7 @@
 | --- | --- |
 | 历史记录与统计 | localStorage 持久化练习记录 + 趋势展示（速度/准确率随时间变化） |
 | 文章分类 / 难度分级 | 文章增 `category`/`difficulty` 字段，侧边栏目录筛选 |
-| 文章库扩充 | 从 20 篇扩充至 50+ 篇 |
+| 文章库扩充 | 从 20 篇扩充至 50+ 篇（V2.0 F4 已扩至 30 篇，含 10 篇 1000–1500 字长文；50+ 为后续目标） |
 | 性能增强（可选） | requestAnimationFrame 渲染节流、批量持久化（Range API 换行检测已随裁决7 落地为 V1 自适应行切分，见 §6.8/§13.5） |
 
 ### 2.4 V1 架构如何为 V2 预留扩展点
@@ -106,7 +106,7 @@
 
 | 级别 | 功能项 | V1 | 说明 |
 | --- | --- | :--: | --- |
-| **Must** | 打字练习 - 20 篇中文文章随机加载 | ✅ | 每篇 150–300 字，正常标点 |
+| **Must** | 打字练习 - 30 篇中文文章随机加载 | ✅ | 短篇 150–300 字 + 长文 1000–1500 字（V2.0 F4 扩容，V1 为 20 篇），正常标点 |
 | **Must** | 打字练习 - 逐字对比（四态标色） | ✅ | 正确/错误/当前光标/未输入 |
 | **Must** | 打字练习 - 中文 IME 兼容 | ✅ | compositionstart/end/input/keydown |
 | **Must** | 打字练习 - 退格删除 | ✅ | pos 守卫，不越界 |
@@ -156,7 +156,7 @@ c:\Users\liuxin\Documents\QoderCN\2026-09-10\chat-1\
 │   │   └── style.css                       # CSS 变量(亮/暗)、全局布局、组件样式、768px 断点
 │   └── js/
 │       ├── data/
-│       │   ├── articles.js                 # window.TP_ARTICLES = [{id,text}...]（20 篇）
+│       │   ├── articles.js                 # window.TP_ARTICLES = [{id,title,text}...]（30 篇：短篇 1–20 + 长文 21–30）
 │       │   └── keyboard.js                 # window.TP_KEYBOARD_LAYOUT = [...104 键...]
 │       ├── components/
 │       │   ├── TypingPractice.js           # window.TP_TypingPractice（打字练习组件，Composition API）
@@ -170,7 +170,7 @@ c:\Users\liuxin\Documents\QoderCN\2026-09-10\chat-1\
 | --- | --- | --- |
 | `index.html` | 承载 `<div id="app">`；按固定顺序引入 Vue CDN 与各 JS（经典脚本）；引入 `style.css` | — |
 | `assets/css/style.css` | 所有 CSS 变量（`:root` 亮色 + `[data-theme="dark"]` 暗色）、布局、组件样式、断点 | — |
-| `data/articles.js` | 20 篇文章数据数组 | `window.TP_ARTICLES` |
+| `data/articles.js` | 30 篇文章数据数组（短篇 20 + 长文 10） | `window.TP_ARTICLES` |
 | `data/keyboard.js` | 104 键布局数据数组 | `window.TP_KEYBOARD_LAYOUT` |
 | `components/TypingPractice.js` | 打字练习组件（IME、逐字对比、退格、统计、自适应行切分镜像测量、完成弹窗逻辑） | `window.TP_TypingPractice` |
 | `components/KeyboardTest.js` | 键盘测试组件（keydown 委托、code→key 映射、testedKeys、进度、重置） | `window.TP_KeyboardTest` |
@@ -402,14 +402,15 @@ pos === text.length → done=true, clearInterval, 弹完成弹窗
 
 ### 7.1 文章数据（`assets/js/data/articles.js`）
 ```js
-// 20 篇中文日常文章；结构预留 V2 扩展字段位（V1 不填充、不使用）
+// 30 篇中文日常文章；结构预留 V2 扩展字段位（V1 不填充、不使用）
 window.TP_ARTICLES = [
-  { id: 1,  text: "……" },   // text 为纯中文字符串，150–300 字，正常标点
+  { id: 1,  text: "……" },   // id 1–20 短篇：纯中文字符串，150–300 字，正常标点
   { id: 2,  text: "……" },
-  // … 共 20 篇，id 从 1 到 20 唯一
+  { id: 21, text: "……" },   // id 21–30 长文（V2.0 F4）：1000–1500 字，正常标点
+  // … 共 30 篇，id 从 1 到 30 唯一
 ];
 ```
-- **V1 字段**：`id`（Number，唯一）、`text`（String，150–300 字，正常标点，纯中文日常内容）。
+- **V1 字段**：`id`（Number，唯一）、`text`（String，短篇 150–300 字 / 长文 1000–1500 字，正常标点，纯中文日常内容）。
 - **约束**：`id` 唯一不重复；`text` 内容经 Vue 文本插值 `{{ }}` 渲染时默认转义（防 XSS/破坏 DOM）。
 - **加载**：随机选取一篇；「换一篇」时避免与当前同 `id`。
 
@@ -615,7 +616,7 @@ font-family: "SF Mono", "Consolas", "PingFang SC", "Microsoft YaHei", monospace;
 | A1 | 可直接运行 | **联网下双击 `index.html`（`file://`）** 在 Chrome/Edge 打开即运行，**控制台无报错**（0 error） |
 | A2 | 无构建 | 无 npm/打包/转译；仅 Vue CDN + 经典脚本；脚本按 data→components→app 顺序加载 |
 | A3 | Vue 构建正确 | 使用 `vue.global.prod.js`（含模板编译器），组件 `template` 字符串正常编译渲染 |
-| A4 | 打字核心 | 20 篇随机加载；逐字四态标色正确；退格有效；换一篇/重新开始可用 |
+| A4 | 打字核心 | 20 篇随机加载（V2.0 F4 起为 30 篇）；逐字四态标色正确；退格有效；换一篇/重新开始可用 |
 | A5 | 统计核心 | 计时起点=首字符；用时/速度(字/分)/准确率实时刷新；进度条随输入推进 |
 | A6 | 完成弹窗 | `pos` 达 `text.length` 时弹出，数据正确；「再试一次」重开当前篇、「换一篇」随机换篇均生效 |
 | A7 | 中文 IME | 逐字对比**零错位**：组合期不误触发、整句 commit 后逐字入库、错字只进输入行、原文长度恒定 |
@@ -623,7 +624,7 @@ font-family: "SF Mono", "Consolas", "PingFang SC", "Microsoft YaHei", monospace;
 | A9 | 视图切换 | 打字/键盘 Tab 切换正常（`<component :is>`）；切走后 document keydown 监听被移除、无泄漏、无并排残留 |
 | A10 | 主题切换 | 一键切换亮暗；全元素颜色一致（无硬编码色、无闪屏）；缺省暗色 |
 | A11 | 主题持久化 | 主题偏好**跨刷新保留**（写读 `localStorage['tp_theme']`） |
-| A12 | 20 篇可切换 | 文章库共 20 篇，「换一篇」可覆盖切换（不与当前同 id） |
+| A12 | 20 篇可切换 | 文章库共 20 篇（V2.0 F4 起为 30 篇），「换一篇」可覆盖切换（不与当前同 id） |
 | A13 | 响应式 | 768px 断点下键盘 Grid 不溢出、统计条换行、布局不错乱；打字视图行切分随任意宽度变化自适应重算（无固定字数/行） |
 | A14 | 健壮性 | B1–B21 边界/异常场景均按第 10 章期望行为处理，不崩溃 |
 | A15 | CDN 降级 | 模拟 Vue CDN 加载失败时不白屏，显示友好提示 |

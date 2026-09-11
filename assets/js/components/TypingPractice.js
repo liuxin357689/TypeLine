@@ -291,7 +291,23 @@
         return pad2(Math.floor(s / 60)) + ":" + pad2(s % 60);
       });
 
-      /* ---------- 计时 ---------- */
+      /* ---------- 计时（F4：事件标记 + 1000ms 心跳合并渲染） ---------- */
+      /* F4 性能优化：原 200ms 轮询改为脏标记 + 心跳——
+         输入/提交事件（pushChar / Backspace）仅置 statsDirty，不同步写 elapsed；
+         1000ms 心跳统一 flush elapsed（秒级推进）并合并渲染脏标记；
+         统计口径不变：完成/放弃存档仍走 stopTimer(true) 精确取毫秒；
+         F3 限时归零检查移入心跳（结算粒度 1s，finishTimed 仍锁 elapsed=限时长）。 */
+      var statsDirty = false;
+      var hbStats = { ticks: 0, flushes: 0, marks: 0 };   /* 自测观测口（F4），卸载后 ticks 停增 */
+      window.TP_TypingPractice.hbStats = hbStats;
+      function markStats() { statsDirty = true; hbStats.marks++; }
+      function flushStats() {
+        var dirty = statsDirty;
+        statsDirty = false;
+        if (startTime.value === null || done.value) return;   /* 未开局/已完成：elapsed 锁定 */
+        elapsed.value = Date.now() - startTime.value;
+        if (dirty) hbStats.flushes++;
+      }
       function stopTimer(finalize) {
         if (timerId !== null) { clearInterval(timerId); timerId = null; }
         if (finalize && startTime.value !== null) {
@@ -303,10 +319,11 @@
         startTime.value = Date.now();
         elapsed.value = 0;
         timerId = setInterval(function () {
-          elapsed.value = Date.now() - startTime.value;
-          /* F3 限时：倒计时归零立即结算 */
+          hbStats.ticks++;
+          flushStats();                                   /* 心跳：秒级推进 + 合并渲染标记 */
+          /* F3 限时：倒计时归零结算（心跳粒度 1s） */
           if (isTimed.value && !done.value && elapsed.value >= limitMs.value) finishTimed();
-        }, 200);
+        }, 1000);
       }
       /* F3 限时结算：组合中未结束的 IME 输入不提交不计字（丢弃 composing 与 input 缓冲，
          不产生半条记录）；elapsed 置为限时长——字/分口径与全文模式一致 =
@@ -329,6 +346,7 @@
         startTimer();                                 // 计时起点=首字符（6.5）
         userInput.value.push(ch);
         pos.value = pos.value + 1;
+        markStats();                              /* F4：提交事件置脏，心跳合并渲染统计 */
         if (pos.value >= len && len > 0) {            // 最后一行输满 → 完成
           done.value = true;
           stopTimer(true);
@@ -379,6 +397,7 @@
           if (pos.value <= 0) return;                           // 起点守卫（B3）
           pos.value = pos.value - 1;                            // 跨行回退由 computed 自动重算（6.4）
           userInput.value = userInput.value.slice(0, pos.value);
+          markStats();                                          /* F4：退格亦为提交事件 */
         }
       }
 
@@ -571,9 +590,16 @@
          宽度由 JS 设为 .row-source 内容区宽，遍历镜像 span 的 getBoundingClientRect().top，
          top 变化处记为新行行首（索引即码点索引，与 rows 切片口径天然一致）；
          与 .row-source 共享 .line-text 排版（white-space: pre-wrap 杜绝空格折叠偏差） */
+      /* F4 增量测量：镜像 span 仅随文章切换由 v-for 重建（resize 不重建）；
+         全量重测仅发生在「文章 key 或容器宽变化」时；同宽重复信号（resize/RO/fonts.ready）
+         命中 skip 去重，避免重复全量；lineStarts 语义不变 = 行首全局索引数组 */
+      var measuredKey = "";          /* 文章 key = id + ':' + 码点数 */
+      var measuredWidth = -1;        /* 上次全量测量时的内容区宽 */
+      var measureStats = { full: 0, skip: 0, ms: 0 };   /* 自测观测口（F4）：全量次数/skip 次数/末次全量耗时 ms */
+      window.TP_TypingPractice.measureStats = measureStats;
       function measureLines() {
         var chars = textChars.value;
-        if (!chars.length) { lineStarts.value = []; return; }   // 全文为空 rows=[]
+        if (!chars.length) { lineStarts.value = []; measuredKey = ""; measuredWidth = -1; return; }   // 全文为空 rows=[]
         var mirror = mirrorRef.value;
         if (!mirror) return;                                    // 镜像未就绪：保留上一次 rows（守卫 4）
         var mspans = mirror.children;
@@ -586,6 +612,14 @@
         var cs = window.getComputedStyle(srcEl);
         var w = srcEl.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight);
         if (!(w > 0)) return;                                   // 宽度<=0：保留上一次 rows（守卫 4）
+        var key = (article.value ? article.value.id : 0) + ":" + chars.length;
+        /* F4 增量去重：文章 key 与宽均未变且已有切分 → skip（无变化/重复信号不全量重测）；
+           宽变化（key 同）或切文（key 异）→ 落入下方全量路径（现状行为保留） */
+        if (key === measuredKey && w === measuredWidth && lineStarts.value.length) {
+          measureStats.skip++;
+          return;
+        }
+        var t0 = (window.performance && performance.now) ? performance.now() : 0;
         mirror.style.width = w + "px";
         var starts = [];
         var lastTop = null;
@@ -597,6 +631,10 @@
           }
         }
         if (starts.length) lineStarts.value = starts;           // 测量失败保留上一次 rows（守卫 4）
+        measuredKey = key;
+        measuredWidth = w;
+        measureStats.full++;
+        if (window.performance && performance.now) measureStats.ms = Math.round((performance.now() - t0) * 10) / 10;
         nextTick(updateCaretAnchor);                              // 测量完成后更新锚点（#15A 条款 3）
       }
 
