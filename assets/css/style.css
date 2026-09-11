@@ -1010,3 +1010,23 @@ button { font-family: inherit; }
   .wb-ch { font-size: 15px; }
   .stats-list-actions { gap: 6px; }
 }
+
+/* ==========================================================================
+   内容列宽分档（#31）：视口分档加宽四视图共用内容列 .app-main，
+   base=1080px；≤1536 维持 base，1537–1919 = base+200，≥1920 = base+400（封顶）。
+   置于文件末尾：.row 覆盖需在基础 .row 规则之后（同特异性源码序胜出）
+   ========================================================================== */
+@media (min-width: 1537px) {
+  .app-main { max-width: 1280px; }
+}
+@media (min-width: 1920px) {
+  .app-main { max-width: 1480px; }
+  /* #31 行长按 ~72 字封顶（文本宽 1240px）：行卡在宽档列内居中、两侧留白对称，
+     左右内边距 16→20（§2）；键盘/统计卡片不受影响仍随列满宽 */
+  .row {
+    padding: 8px 20px;
+    max-width: 1280px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+}
